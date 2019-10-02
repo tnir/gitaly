@@ -12,6 +12,13 @@ BUILD_DIR = _build
 PKG = gitlab.com/gitlab-org/gitaly
 MAKEGEN = $(BUILD_DIR)/makegen
 
+# Variables used when building Git
+GIT_REPO = https://gitlab.com/gitlab-org/git.git
+GIT_SRC = $(BUILD_DIR)/src/git
+GIT_REV = master
+GIT_INSTALL = $(BUILD_DIR)/git
+GIT_BUILD_OPTIONS = -j 8 DEVELOPER=1 CFLAGS="-O0 -g3"
+
 # These variables are handed down to make in _build
 export PATH := $(BUILD_DIR)/bin:$(PATH)
 export TEST_REPO_STORAGE_PATH := $(CURDIR)/internal/testhelper/testdata/data
@@ -122,6 +129,14 @@ $(BUILD_DIR)/go.mod: $(BUILD_DIR)/.ok
 
 _build/makegen: _support/makegen.go $(BUILD_DIR)/go.mod
 	cd $(BUILD_DIR) && go build -o $(CURDIR)/$@ $(SOURCE_DIR)/_support/makegen.go
+
+.PHONY: build-git
+build-git:
+	rm -rf $(GIT_SRC) $(GIT_INSTALL)
+	git clone $(GIT_REPO) $(GIT_SRC)
+	git -C $(GIT_SRC) checkout $(GIT_REV)
+	mkdir -p $(GIT_INSTALL)
+	$(MAKE) -C $(GIT_SRC) prefix=`cd $(GIT_INSTALL) && pwd` $(GIT_BUILD_OPTIONS) install
 
 clean:
 	git clean -fdX
