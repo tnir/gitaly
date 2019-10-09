@@ -12,12 +12,18 @@ BUILD_DIR = _build
 PKG = gitlab.com/gitlab-org/gitaly
 MAKEGEN = $(BUILD_DIR)/makegen
 
+# Variable used with Git
+GIT_REV = master
+GIT_INSTALL = $(BUILD_DIR)/git
+
 # Variables used when building Git
 GIT_REPO = https://gitlab.com/gitlab-org/git.git
 GIT_SRC = $(BUILD_DIR)/src/git
-GIT_REV = master
-GIT_INSTALL = $(BUILD_DIR)/git
 GIT_BUILD_OPTIONS = -j 8 DEVELOPER=1 CFLAGS="-O0 -g3"
+
+# Variables used when downloading Git
+GIT_BUILD_JOB = git_build
+GIT_ARTIFACT = "https://gitlab.com/gitlab-org/git/-/jobs/artifacts/$(GIT_REV)/download?job=$(GIT_BUILD_JOB)"
 
 # These variables are handed down to make in _build
 export PATH := $(BUILD_DIR)/bin:$(PATH)
@@ -137,6 +143,12 @@ build-git:
 	git -C $(GIT_SRC) checkout $(GIT_REV)
 	mkdir -p $(GIT_INSTALL)
 	$(MAKE) -C $(GIT_SRC) prefix=`cd $(GIT_INSTALL) && pwd` $(GIT_BUILD_OPTIONS) install
+
+.PHONY: download-git
+download-git:
+	echo "Getting Git from $(GIT_ARTIFACT)"
+	mkdir -p $(GIT_INSTALL)
+	wget -P $(GIT_INSTALL) $(GIT_ARTIFACT)
 
 clean:
 	git clean -fdX
