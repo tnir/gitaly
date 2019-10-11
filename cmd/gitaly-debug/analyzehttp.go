@@ -13,12 +13,29 @@ import (
 )
 
 func analyzeHTTPClone(cloneURL string) {
-	wants := doBenchGet(cloneURL)
-	doBenchPost(cloneURL, wants)
+	stats := &cloneStats{URL: cloneURL}
+	stats.doGet()
+	stats.doPost()
 }
 
-func doBenchGet(cloneURL string) []string {
-	req, err := http.NewRequest("GET", cloneURL+"/info/refs?service=git-upload-pack", nil)
+type cloneStats struct {
+	URL   string
+	wants []string
+	get
+}
+
+type get struct {
+	start              time.Time
+	responseHeaderTime time.Duration
+	firstPacketTime    time.Duration
+	totalTime          time.Duration
+	gzip               bool
+	status             int
+	payloadSize        int64
+}
+
+func (st *cloneStats) doGet() {
+	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
 	noError(err)
 
 	for k, v := range map[string]string{
@@ -30,20 +47,23 @@ func doBenchGet(cloneURL string) []string {
 		req.Header.Set(k, v)
 	}
 
-	start := time.Now()
+	st.get.start = time.Now()
 	msg("---")
 	msg("--- GET %v", req.URL)
 	msg("---")
 	resp, err := http.DefaultClient.Do(req)
 	noError(err)
 
-	msg("response after %v", time.Since(start))
+	st.get.responseHeaderTime = time.Since(st.get.start)
+	msg("response after %v", st.get.responseHeaderTime)
 	msg("response header: %v", resp.Header)
-	msg("HTTP status code %d", resp.StatusCode)
+	st.get.status = resp.StatusCode
+	msg("HTTP status code %d", st.get.status)
 	defer resp.Body.Close()
 
 	body := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
+		st.gzip = true
 		body, err = gzip.NewReader(body)
 		noError(err)
 	}
@@ -56,8 +76,6 @@ func doBenchGet(cloneURL string) []string {
 	// - ...
 	// - FLUSH
 	//
-	var wants []string
-	var size int64
 	seenFlush := false
 	scanner := pktline.NewScanner(body)
 	packets := 0
@@ -68,10 +86,11 @@ func doBenchGet(cloneURL string) []string {
 		}
 
 		data := string(pktline.Data(scanner.Bytes()))
-		size += int64(len(data))
+		st.get.payloadSize += int64(len(data))
 		switch packets {
 		case 0:
-			msg("first packet %v", time.Since(start))
+			st.firstPacketTime = time.Since(st.get.start)
+			msg("first packet %v", st.firstPacketTime)
 			if data != "# service=git-upload-pack\n" {
 				fatal(fmt.Errorf("unexpected header %q", data))
 			}
@@ -96,7 +115,7 @@ func doBenchGet(cloneURL string) []string {
 			refs++
 
 			if strings.HasPrefix(split[1], "refs/heads/") || strings.HasPrefix(split[1], "refs/tags/") {
-				wants = append(wants, split[0])
+				st.wants = append(st.wants, split[0])
 			}
 		}
 	}
@@ -106,17 +125,16 @@ func doBenchGet(cloneURL string) []string {
 	}
 
 	msg("received %d packets", packets)
-	msg("done in %v", time.Since(start))
-	msg("payload data: %d bytes", size)
-	msg("received %d refs, selected %d wants", refs, len(wants))
-
-	return wants
+	st.totalTime = time.Since(st.get.start)
+	msg("done in %v", st.totalTime)
+	msg("payload data: %d bytes", st.get.payloadSize)
+	msg("received %d refs, selected %d wants", refs, len(st.wants))
 }
 
-func doBenchPost(cloneURL string, wants []string) {
+func (st *cloneStats) doPost() {
 	reqBodyRaw := &bytes.Buffer{}
 	reqBodyGzip := gzip.NewWriter(reqBodyRaw)
-	for i, oid := range wants {
+	for i, oid := range st.wants {
 		if i == 0 {
 			oid += " multi_ack_detailed no-done side-band-64k thin-pack ofs-delta deepen-since deepen-not agent=git/2.21.0"
 		}
@@ -128,7 +146,7 @@ func doBenchPost(cloneURL string, wants []string) {
 	noError(err)
 	noError(reqBodyGzip.Close())
 
-	req, err := http.NewRequest("POST", cloneURL+"/git-upload-pack", reqBodyRaw)
+	req, err := http.NewRequest("POST", st.URL+"/git-upload-pack", reqBodyRaw)
 	noError(err)
 
 	for k, v := range map[string]string{
