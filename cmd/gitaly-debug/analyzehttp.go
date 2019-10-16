@@ -12,14 +12,18 @@ import (
 	"gitlab.com/gitlab-org/gitaly/internal/git/pktline"
 )
 
-func analyzeHTTPClone(cloneURL string) {
-	stats := &cloneStats{URL: cloneURL}
+func analyzeHTTPClone(cloneURL string, formatJSON bool) {
+	stats := &cloneStats{
+		URL:  cloneURL,
+		json: formatJSON,
+	}
 	stats.doGet()
 	stats.doPost()
 }
 
 type cloneStats struct {
 	URL   string
+	json  bool
 	wants []string
 	get
 }
@@ -48,18 +52,19 @@ func (st *cloneStats) doGet() {
 	}
 
 	st.get.start = time.Now()
-	msg("---")
-	msg("--- GET %v", req.URL)
-	msg("---")
+	st.msg("---")
+	st.msg("--- GET %v", req.URL)
+	st.msg("---")
 	resp, err := http.DefaultClient.Do(req)
 	noError(err)
 
 	st.get.responseHeaderTime = time.Since(st.get.start)
-	msg("response after %v", st.get.responseHeaderTime)
-	msg("response header: %v", resp.Header)
 	st.get.status = resp.StatusCode
-	msg("HTTP status code %d", st.get.status)
 	defer resp.Body.Close()
+
+	st.msg("response after %v", st.get.responseHeaderTime)
+	st.msg("response header: %v", resp.Header)
+	st.msg("HTTP status code %d", st.get.status)
 
 	body := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
@@ -90,7 +95,7 @@ func (st *cloneStats) doGet() {
 		switch packets {
 		case 0:
 			st.firstPacketTime = time.Since(st.get.start)
-			msg("first packet %v", st.firstPacketTime)
+			st.msg("first packet %v", st.firstPacketTime)
 			if data != "# service=git-upload-pack\n" {
 				fatal(fmt.Errorf("unexpected header %q", data))
 			}
@@ -124,11 +129,12 @@ func (st *cloneStats) doGet() {
 		fatal("missing flush in response")
 	}
 
-	msg("received %d packets", packets)
 	st.totalTime = time.Since(st.get.start)
-	msg("done in %v", st.totalTime)
-	msg("payload data: %d bytes", st.get.payloadSize)
-	msg("received %d refs, selected %d wants", refs, len(st.wants))
+
+	st.msg("received %d packets", packets)
+	st.msg("done in %v", st.totalTime)
+	st.msg("payload data: %d bytes", st.get.payloadSize)
+	st.msg("received %d refs, selected %d wants", refs, len(st.wants))
 }
 
 func (st *cloneStats) doPost() {
@@ -159,16 +165,17 @@ func (st *cloneStats) doPost() {
 	}
 
 	start := time.Now()
-	msg("---")
-	msg("--- POST %v", req.URL)
-	msg("---")
+	st.msg("---")
+	st.msg("--- POST %v", req.URL)
+	st.msg("---")
+
 	resp, err := http.DefaultClient.Do(req)
 	noError(err)
-
-	msg("response after %v", time.Since(start))
-	msg("response header: %v", resp.Header)
-	msg("HTTP status code %d", resp.StatusCode)
 	defer resp.Body.Close()
+
+	st.msg("response after %v", time.Since(start))
+	st.msg("response header: %v", resp.Header)
+	st.msg("HTTP status code %d", resp.StatusCode)
 
 	// Expected response:
 	// - "NAK\n"
@@ -193,7 +200,7 @@ func (st *cloneStats) doPost() {
 			if !bytes.Equal([]byte("NAK\n"), data) {
 				fatal(fmt.Errorf("expected NAK, got %q", data))
 			}
-			msg("received NAK after %v", time.Since(start))
+			st.msg("received NAK after %v", time.Since(start))
 			continue
 		}
 
@@ -211,13 +218,13 @@ func (st *cloneStats) doPost() {
 			fatal(fmt.Errorf("invalid sideband: %d", band))
 		}
 		if sideBandHistogram[band] == 0 {
-			msg("received first %s packet after %v", bandToHuman(band), time.Since(start))
+			st.msg("received first %s packet after %v", bandToHuman(band), time.Since(start))
 		}
 
 		sideBandHistogram[band]++
 
 		// Print progress data as-is
-		if band == 2 {
+		if !st.json && band == 2 {
 			_, err := os.Stdout.Write(data[1:])
 			noError(err)
 		}
@@ -226,24 +233,30 @@ func (st *cloneStats) doPost() {
 		totalSize[band] += int64(n)
 		payloadSizeHistogram[n]++
 
-		if packets%100 == 0 && packets > 0 && band == 1 {
+		if !st.json && packets%100 == 0 && packets > 0 && band == 1 {
 			fmt.Printf(".")
 		}
 	}
 
-	fmt.Println("") // Trailing newline for progress dots.
+	if !st.json {
+		fmt.Println("") // Trailing newline for progress dots.
+	}
 
 	noError(scanner.Err())
 	if !seenFlush {
 		fatal("POST response did not end in flush")
 	}
 
-	msg("received %d packets", packets)
-	msg("done in %v", time.Since(start))
-	for i := byte(1); i <= 3; i++ {
-		msg("%8s band: %10d payload bytes, %6d packets", bandToHuman(i), totalSize[i], sideBandHistogram[i])
+	if st.json {
+		fmt.Printf("%+v\n", st)
 	}
-	msg("packet payload size histogram: %v", payloadSizeHistogram)
+	st.msg("received %d packets", packets)
+	st.msg("done in %v", time.Since(start))
+	for i := byte(1); i <= 3; i++ {
+		st.msg("%8s band: %10d payload bytes, %6d packets", bandToHuman(i), totalSize[i], sideBandHistogram[i])
+	}
+	st.msg("packet payload size histogram: %v", payloadSizeHistogram)
+
 }
 
 func bandToHuman(b byte) string {
@@ -257,5 +270,11 @@ func bandToHuman(b byte) string {
 	default:
 		fatal(fmt.Errorf("invalid band %d", b))
 		return "" // never reached
+	}
+}
+
+func (st *cloneStats) msg(format string, a ...interface{}) {
+	if !st.json {
+		msg(format, a...)
 	}
 }

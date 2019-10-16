@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 )
@@ -16,7 +17,7 @@ simulate-http-clone GIT_DIR
 	the workload also depends on the transport capabilities requested by
 	the client; this tool uses a fixed set of capabilities.
 
-analyze-http-clone HTTP_URL
+analyze-http-clone [-json] HTTP_URL
 	Clones a Git repository from a public HTTP URL into /dev/null.
 
 list-bitmap-pack IDX_FILE
@@ -50,10 +51,17 @@ func main() {
 		}
 		simulateHTTPClone(extraArgs[0])
 	case "analyze-http-clone":
-		if len(extraArgs) != 1 {
+		fs := flag.NewFlagSet("", flag.ContinueOnError)
+		useJSON := fs.Bool("json", false, "output JSON")
+		if err := fs.Parse(extraArgs); err != nil {
 			fatal(usage)
 		}
-		analyzeHTTPClone(extraArgs[0])
+
+		if fs.NArg() != 1 {
+			fatal(usage)
+		}
+
+		analyzeHTTPClone(fs.Arg(0), *useJSON)
 	case "list-bitmap-pack":
 		if len(extraArgs) != 1 {
 			fatal(usage)
