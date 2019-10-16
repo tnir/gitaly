@@ -36,6 +36,8 @@ type get struct {
 	gzip               bool
 	status             int
 	payloadSize        int64
+	packets            int
+	refs               int
 }
 
 func (st *cloneStats) doGet() {
@@ -83,16 +85,14 @@ func (st *cloneStats) doGet() {
 	//
 	seenFlush := false
 	scanner := pktline.NewScanner(body)
-	packets := 0
-	refs := 0
-	for ; scanner.Scan(); packets++ {
+	for ; scanner.Scan(); st.get.packets++ {
 		if seenFlush {
 			fatal("received packet after flush")
 		}
 
 		data := string(pktline.Data(scanner.Bytes()))
 		st.get.payloadSize += int64(len(data))
-		switch packets {
+		switch st.get.packets {
 		case 0:
 			st.firstPacketTime = time.Since(st.get.start)
 			st.msg("first packet %v", st.firstPacketTime)
@@ -104,7 +104,7 @@ func (st *cloneStats) doGet() {
 				fatal("missing flush after service announcement")
 			}
 		default:
-			if packets == 2 && !strings.Contains(data, " side-band-64k") {
+			if st.get.packets == 2 && !strings.Contains(data, " side-band-64k") {
 				fatal(fmt.Errorf("missing side-band-64k capability in %q", data))
 			}
 
@@ -117,7 +117,7 @@ func (st *cloneStats) doGet() {
 			if len(split) != 2 {
 				continue
 			}
-			refs++
+			st.get.refs++
 
 			if strings.HasPrefix(split[1], "refs/heads/") || strings.HasPrefix(split[1], "refs/tags/") {
 				st.wants = append(st.wants, split[0])
@@ -131,10 +131,10 @@ func (st *cloneStats) doGet() {
 
 	st.totalTime = time.Since(st.get.start)
 
-	st.msg("received %d packets", packets)
+	st.msg("received %d packets", st.get.packets)
 	st.msg("done in %v", st.totalTime)
 	st.msg("payload data: %d bytes", st.get.payloadSize)
-	st.msg("received %d refs, selected %d wants", refs, len(st.wants))
+	st.msg("received %d refs, selected %d wants", st.get.refs, len(st.wants))
 }
 
 func (st *cloneStats) doPost() {
@@ -248,7 +248,7 @@ func (st *cloneStats) doPost() {
 	}
 
 	if st.json {
-		fmt.Printf("%+v\n", st)
+		fmt.Printf("%+v\n", st.get)
 	}
 	st.msg("received %d packets", packets)
 	st.msg("done in %v", time.Since(start))
