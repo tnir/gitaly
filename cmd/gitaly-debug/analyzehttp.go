@@ -26,6 +26,7 @@ type cloneStats struct {
 	json  bool
 	wants []string
 	get
+	post
 }
 
 type get struct {
@@ -137,7 +138,33 @@ func (st *cloneStats) doGet() {
 	st.msg("received %d refs, selected %d wants", st.get.refs, len(st.wants))
 }
 
+type post struct {
+	start              time.Time
+	responseHeaderTime time.Duration
+	nakTime            time.Duration
+	multiband          map[string]*bandInfo
+	status             int
+	packets            int
+	largestPayloadSize int
+}
+
+type bandInfo struct {
+	first   time.Duration
+	size    int64
+	packets int
+}
+
+const (
+	bandMin = 1
+	bandMax = 3
+)
+
 func (st *cloneStats) doPost() {
+	st.multiband = make(map[string]*bandInfo)
+	for i := byte(bandMin); i < bandMax; i++ {
+		st.multiband[bandToHuman(i)] = &bandInfo{}
+	}
+
 	reqBodyRaw := &bytes.Buffer{}
 	reqBodyGzip := gzip.NewWriter(reqBodyRaw)
 	for i, oid := range st.wants {
@@ -164,7 +191,7 @@ func (st *cloneStats) doPost() {
 		req.Header.Set(k, v)
 	}
 
-	start := time.Now()
+	st.post.start = time.Now()
 	st.msg("---")
 	st.msg("--- POST %v", req.URL)
 	st.msg("---")
@@ -173,9 +200,12 @@ func (st *cloneStats) doPost() {
 	noError(err)
 	defer resp.Body.Close()
 
-	st.msg("response after %v", time.Since(start))
+	st.post.responseHeaderTime = time.Since(st.post.start)
+	st.post.status = resp.StatusCode
+
+	st.msg("response after %v", st.post.responseHeaderTime)
 	st.msg("response header: %v", resp.Header)
-	st.msg("HTTP status code %d", resp.StatusCode)
+	st.msg("HTTP status code %d", st.post.status)
 
 	// Expected response:
 	// - "NAK\n"
@@ -183,24 +213,23 @@ func (st *cloneStats) doPost() {
 	// - ...
 	// - FLUSH
 	//
-	packets := 0
+
 	scanner := pktline.NewScanner(resp.Body)
-	totalSize := make(map[byte]int64)
 	payloadSizeHistogram := make(map[int]int)
-	sideBandHistogram := make(map[byte]int)
 	seenFlush := false
-	for ; scanner.Scan(); packets++ {
+	for ; scanner.Scan(); st.post.packets++ {
 		if seenFlush {
 			fatal("received extra packet after flush")
 		}
 
 		data := pktline.Data(scanner.Bytes())
 
-		if packets == 0 {
+		if st.post.packets == 0 {
 			if !bytes.Equal([]byte("NAK\n"), data) {
 				fatal(fmt.Errorf("expected NAK, got %q", data))
 			}
-			st.msg("received NAK after %v", time.Since(start))
+			st.post.nakTime = time.Since(st.post.start)
+			st.msg("received NAK after %v", st.post.nakTime)
 			continue
 		}
 
@@ -213,27 +242,31 @@ func (st *cloneStats) doPost() {
 			fatal("empty packet in PACK data")
 		}
 
-		band := data[0]
-		if band < 1 || band > 3 {
-			fatal(fmt.Errorf("invalid sideband: %d", band))
-		}
-		if sideBandHistogram[band] == 0 {
-			st.msg("received first %s packet after %v", bandToHuman(band), time.Since(start))
+		rawBand := data[0]
+		if rawBand < bandMin || rawBand > bandMax {
+			fatal(fmt.Errorf("invalid sideband: %d", rawBand))
 		}
 
-		sideBandHistogram[band]++
+		band := bandToHuman(rawBand)
+		info := st.post.multiband[band]
+		if info.packets == 0 {
+			info.first = time.Since(st.post.start)
+			st.msg("received first %s packet after %v", band, info.first)
+		}
+
+		info.packets++
 
 		// Print progress data as-is
-		if !st.json && band == 2 {
+		if !st.json && band == "progress" {
 			_, err := os.Stdout.Write(data[1:])
 			noError(err)
 		}
 
 		n := len(data[1:])
-		totalSize[band] += int64(n)
+		info.size += int64(n)
 		payloadSizeHistogram[n]++
 
-		if !st.json && packets%100 == 0 && packets > 0 && band == 1 {
+		if !st.json && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
 			fmt.Printf(".")
 		}
 	}
@@ -247,16 +280,24 @@ func (st *cloneStats) doPost() {
 		fatal("POST response did not end in flush")
 	}
 
-	if st.json {
-		fmt.Printf("%+v\n", st.get)
-	}
-	st.msg("received %d packets", packets)
-	st.msg("done in %v", time.Since(start))
-	for i := byte(1); i <= 3; i++ {
-		st.msg("%8s band: %10d payload bytes, %6d packets", bandToHuman(i), totalSize[i], sideBandHistogram[i])
+	st.msg("received %d packets", st.post.packets)
+	st.msg("done in %v", time.Since(st.post.start))
+
+	for band, info := range st.post.multiband {
+		st.msg("%8s band: %10d payload bytes, %6d packets", band, info.size, info.packets)
 	}
 	st.msg("packet payload size histogram: %v", payloadSizeHistogram)
 
+	for s := range payloadSizeHistogram {
+		if s > st.post.largestPayloadSize {
+			st.post.largestPayloadSize = s
+		}
+	}
+
+	if st.json {
+		fmt.Printf("%+v\n", st.get)
+		fmt.Printf("%+v\n", st.post)
+	}
 }
 
 func bandToHuman(b byte) string {
