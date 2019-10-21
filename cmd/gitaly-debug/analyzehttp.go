@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,8 +21,8 @@ func analyzeHTTPClone(cloneURL string, formatJSON bool) {
 		out:  os.Stdout,
 	}
 
-	stats.doGet()
-	stats.doPost()
+	noError(stats.doGet())
+	noError(stats.doPost())
 }
 
 type cloneStats struct {
@@ -45,9 +46,11 @@ type get struct {
 	refs               int
 }
 
-func (st *cloneStats) doGet() {
+func (st *cloneStats) doGet() error {
 	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
-	noError(err)
+	if err != nil {
+		return err
+	}
 
 	for k, v := range map[string]string{
 		"User-Agent":      "gitaly-debug",
@@ -63,7 +66,9 @@ func (st *cloneStats) doGet() {
 	st.msg("--- GET %v", req.URL)
 	st.msg("---")
 	resp, err := http.DefaultClient.Do(req)
-	noError(err)
+	if err != nil {
+		return err
+	}
 
 	st.get.responseHeaderTime = time.Since(st.get.start)
 	st.get.status = resp.StatusCode
@@ -77,7 +82,9 @@ func (st *cloneStats) doGet() {
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		st.gzip = true
 		body, err = gzip.NewReader(body)
-		noError(err)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Expected response:
@@ -92,7 +99,7 @@ func (st *cloneStats) doGet() {
 	scanner := pktline.NewScanner(body)
 	for ; scanner.Scan(); st.get.packets++ {
 		if seenFlush {
-			fatal("received packet after flush")
+			return errors.New("received packet after flush")
 		}
 
 		data := string(pktline.Data(scanner.Bytes()))
@@ -102,15 +109,15 @@ func (st *cloneStats) doGet() {
 			st.firstPacketTime = time.Since(st.get.start)
 			st.msg("first packet %v", st.firstPacketTime)
 			if data != "# service=git-upload-pack\n" {
-				fatal(fmt.Errorf("unexpected header %q", data))
+				return fmt.Errorf("unexpected header %q", data)
 			}
 		case 1:
 			if !pktline.IsFlush(scanner.Bytes()) {
-				fatal("missing flush after service announcement")
+				return errors.New("missing flush after service announcement")
 			}
 		default:
 			if st.get.packets == 2 && !strings.Contains(data, " side-band-64k") {
-				fatal(fmt.Errorf("missing side-band-64k capability in %q", data))
+				return fmt.Errorf("missing side-band-64k capability in %q", data)
 			}
 
 			if pktline.IsFlush(scanner.Bytes()) {
@@ -131,7 +138,7 @@ func (st *cloneStats) doGet() {
 	}
 	noError(scanner.Err())
 	if !seenFlush {
-		fatal("missing flush in response")
+		return errors.New("missing flush in response")
 	}
 
 	st.get.totalTime = time.Since(st.get.start)
@@ -140,6 +147,8 @@ func (st *cloneStats) doGet() {
 	st.msg("done in %v", st.get.totalTime)
 	st.msg("payload data: %d bytes", st.get.payloadSize)
 	st.msg("received %d refs, selected %d wants", st.get.refs, len(st.wants))
+
+	return nil
 }
 
 type post struct {
@@ -164,10 +173,14 @@ const (
 	bandMax = 3
 )
 
-func (st *cloneStats) doPost() {
+func (st *cloneStats) doPost() error {
 	st.multiband = make(map[string]*bandInfo)
 	for i := byte(bandMin); i < bandMax; i++ {
-		st.multiband[bandToHuman(i)] = &bandInfo{}
+		band, err := bandToHuman(i)
+		if err != nil {
+			return err
+		}
+		st.multiband[band] = &bandInfo{}
 	}
 
 	reqBodyRaw := &bytes.Buffer{}
@@ -176,16 +189,22 @@ func (st *cloneStats) doPost() {
 		if i == 0 {
 			oid += " multi_ack_detailed no-done side-band-64k thin-pack ofs-delta deepen-since deepen-not agent=git/2.21.0"
 		}
-		_, err := pktline.WriteString(reqBodyGzip, "want "+oid+"\n")
-		noError(err)
+		if _, err := pktline.WriteString(reqBodyGzip, "want "+oid+"\n"); err != nil {
+			return err
+		}
 	}
 	noError(pktline.WriteFlush(reqBodyGzip))
-	_, err := pktline.WriteString(reqBodyGzip, "done\n")
-	noError(err)
-	noError(reqBodyGzip.Close())
+	if _, err := pktline.WriteString(reqBodyGzip, "done\n"); err != nil {
+		return err
+	}
+	if err := reqBodyGzip.Close(); err != nil {
+		return err
+	}
 
 	req, err := http.NewRequest("POST", st.URL+"/git-upload-pack", reqBodyRaw)
-	noError(err)
+	if err != nil {
+		return err
+	}
 
 	for k, v := range map[string]string{
 		"User-Agent":       "gitaly-debug",
@@ -202,7 +221,9 @@ func (st *cloneStats) doPost() {
 	st.msg("---")
 
 	resp, err := http.DefaultClient.Do(req)
-	noError(err)
+	if err != nil {
+		return err
+	}
 	defer resp.Body.Close()
 
 	st.post.responseHeaderTime = time.Since(st.post.start)
@@ -224,14 +245,14 @@ func (st *cloneStats) doPost() {
 	seenFlush := false
 	for ; scanner.Scan(); st.post.packets++ {
 		if seenFlush {
-			fatal("received extra packet after flush")
+			return errors.New("received extra packet after flush")
 		}
 
 		data := pktline.Data(scanner.Bytes())
 
 		if st.post.packets == 0 {
 			if !bytes.Equal([]byte("NAK\n"), data) {
-				fatal(fmt.Errorf("expected NAK, got %q", data))
+				return fmt.Errorf("expected NAK, got %q", data)
 			}
 			st.post.nakTime = time.Since(st.post.start)
 			st.msg("received NAK after %v", st.post.nakTime)
@@ -244,15 +265,19 @@ func (st *cloneStats) doPost() {
 		}
 
 		if len(data) == 0 {
-			fatal("empty packet in PACK data")
+			return errors.New("empty packet in PACK data")
 		}
 
 		rawBand := data[0]
 		if rawBand < bandMin || rawBand > bandMax {
-			fatal(fmt.Errorf("invalid sideband: %d", rawBand))
+			return fmt.Errorf("invalid sideband: %d", rawBand)
 		}
 
-		band := bandToHuman(rawBand)
+		band, err := bandToHuman(rawBand)
+		if err != nil {
+			return err
+		}
+
 		info := st.post.multiband[band]
 		if info.packets == 0 {
 			info.first = time.Since(st.post.start)
@@ -263,8 +288,9 @@ func (st *cloneStats) doPost() {
 
 		// Print progress data as-is
 		if !st.json && band == "progress" {
-			_, err := st.out.Write(data[1:])
-			noError(err)
+			if _, err := st.out.Write(data[1:]); err != nil {
+				return err
+			}
 		}
 
 		n := len(data[1:])
@@ -272,17 +298,22 @@ func (st *cloneStats) doPost() {
 		payloadSizeHistogram[n]++
 
 		if !st.json && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
-			fmt.Fprint(st.out, ".")
+			if _, err := fmt.Fprint(st.out, "."); err != nil {
+				return err
+			}
 		}
 	}
 
 	if !st.json {
-		fmt.Fprintln(st.out, "") // Trailing newline for progress dots.
+		// Trailing newline for progress dots.
+		if _, err := fmt.Fprintln(st.out, ""); err != nil {
+			return err
+		}
 	}
 
 	noError(scanner.Err())
 	if !seenFlush {
-		fatal("POST response did not end in flush")
+		return errors.New("POST response did not end in flush")
 	}
 	st.post.totalTime = time.Since(st.post.start)
 
@@ -301,27 +332,38 @@ func (st *cloneStats) doPost() {
 	}
 
 	if st.json {
-		fmt.Fprintf(st.out, "%+v\n", st.get)
-		fmt.Fprintf(st.out, "%+v\n", st.post)
+		if _, err := fmt.Fprintf(st.out, "%+v\n", st.get); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(st.out, "%+v\n", st.post); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func bandToHuman(b byte) string {
+func bandToHuman(b byte) (string, error) {
 	switch b {
 	case 1:
-		return "pack"
+		return "pack", nil
 	case 2:
-		return "progress"
+		return "progress", nil
 	case 3:
-		return "error"
+		return "error", nil
 	default:
-		fatal(fmt.Errorf("invalid band %d", b))
-		return "" // never reached
+		return "", fmt.Errorf("invalid band %d", b)
 	}
 }
 
-func (st *cloneStats) msg(format string, a ...interface{}) {
-	if !st.json {
-		fmt.Fprintln(st.out, fmt.Sprintf(format, a...))
+func (st *cloneStats) msg(format string, a ...interface{}) error {
+	if st.json {
+		return nil
 	}
+
+	if _, err := fmt.Fprintln(st.out, fmt.Sprintf(format, a...)); err != nil {
+		return err
+	}
+
+	return nil
 }
