@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +17,9 @@ func analyzeHTTPClone(cloneURL string, formatJSON bool) {
 	stats := &cloneStats{
 		URL:  cloneURL,
 		json: formatJSON,
+		out:  os.Stdout,
 	}
+
 	stats.doGet()
 	stats.doPost()
 }
@@ -27,6 +30,7 @@ type cloneStats struct {
 	wants []string
 	get
 	post
+	out io.Writer
 }
 
 type get struct {
@@ -130,16 +134,17 @@ func (st *cloneStats) doGet() {
 		fatal("missing flush in response")
 	}
 
-	st.totalTime = time.Since(st.get.start)
+	st.get.totalTime = time.Since(st.get.start)
 
 	st.msg("received %d packets", st.get.packets)
-	st.msg("done in %v", st.totalTime)
+	st.msg("done in %v", st.get.totalTime)
 	st.msg("payload data: %d bytes", st.get.payloadSize)
 	st.msg("received %d refs, selected %d wants", st.get.refs, len(st.wants))
 }
 
 type post struct {
 	start              time.Time
+	totalTime          time.Duration
 	responseHeaderTime time.Duration
 	nakTime            time.Duration
 	multiband          map[string]*bandInfo
@@ -258,7 +263,7 @@ func (st *cloneStats) doPost() {
 
 		// Print progress data as-is
 		if !st.json && band == "progress" {
-			_, err := os.Stdout.Write(data[1:])
+			_, err := st.out.Write(data[1:])
 			noError(err)
 		}
 
@@ -267,21 +272,22 @@ func (st *cloneStats) doPost() {
 		payloadSizeHistogram[n]++
 
 		if !st.json && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
-			fmt.Printf(".")
+			fmt.Fprint(st.out, ".")
 		}
 	}
 
 	if !st.json {
-		fmt.Println("") // Trailing newline for progress dots.
+		fmt.Fprintln(st.out, "") // Trailing newline for progress dots.
 	}
 
 	noError(scanner.Err())
 	if !seenFlush {
 		fatal("POST response did not end in flush")
 	}
+	st.post.totalTime = time.Since(st.post.start)
 
 	st.msg("received %d packets", st.post.packets)
-	st.msg("done in %v", time.Since(st.post.start))
+	st.msg("done in %v", st.post.totalTime)
 
 	for band, info := range st.post.multiband {
 		st.msg("%8s band: %10d payload bytes, %6d packets", band, info.size, info.packets)
@@ -295,8 +301,8 @@ func (st *cloneStats) doPost() {
 	}
 
 	if st.json {
-		fmt.Printf("%+v\n", st.get)
-		fmt.Printf("%+v\n", st.post)
+		fmt.Fprintf(st.out, "%+v\n", st.get)
+		fmt.Fprintf(st.out, "%+v\n", st.post)
 	}
 }
 
@@ -316,6 +322,6 @@ func bandToHuman(b byte) string {
 
 func (st *cloneStats) msg(format string, a ...interface{}) {
 	if !st.json {
-		msg(format, a...)
+		fmt.Fprintln(st.out, fmt.Sprintf(format, a...))
 	}
 }
