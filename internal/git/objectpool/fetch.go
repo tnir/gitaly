@@ -2,11 +2,17 @@ package objectpool
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/gitlab-org/gitaly/internal/command"
 	"gitlab.com/gitlab-org/gitaly/internal/git"
 	"gitlab.com/gitlab-org/gitaly/internal/git/repository"
@@ -72,7 +78,7 @@ func (o *ObjectPool) FetchFromOrigin(ctx context.Context, origin *gitalypb.Repos
 		return err
 	}
 
-	if err := logDanglingRefs(ctx, o, "before fetch"); err != nil {
+	if err := o.logStats(ctx, "before fetch"); err != nil {
 		return err
 	}
 
@@ -94,7 +100,7 @@ func (o *ObjectPool) FetchFromOrigin(ctx context.Context, origin *gitalypb.Repos
 		return err
 	}
 
-	if err := logDanglingRefs(ctx, o, "after fetch"); err != nil {
+	if err := o.logStats(ctx, "after fetch"); err != nil {
 		return err
 	}
 
@@ -185,8 +191,13 @@ func repackPool(ctx context.Context, pool repository.GitRepo) error {
 	return nil
 }
 
-func logDanglingRefs(ctx context.Context, pool repository.GitRepo, when string) error {
-	forEachRef, err := git.SafeCmd(ctx, pool, nil, git.SubCmd{
+func (o *ObjectPool) logStats(ctx context.Context, when string) error {
+	poolSize, err := sizeObjectDir(ctx, o.FullPath())
+	if err != nil {
+		return err
+	}
+
+	forEachRef, err := git.SafeCmd(ctx, o, nil, git.SubCmd{
 		Name:  "for-each-ref",
 		Flags: []git.Option{git.Flag{"--format=%(objecttype)"}},
 		Args:  []string{danglingObjectNamespace},
@@ -208,13 +219,45 @@ func logDanglingRefs(ctx context.Context, pool repository.GitRepo, when string) 
 		return err
 	}
 
-	entry := grpc_logrus.Extract(ctx).WithField("when", when)
-	for _, field := range []string{"blob", "commit", "tag", "tree"} {
-		key := "dangling." + field + ".ref"
-		entry = entry.WithField(key, counts[field])
+	fields := logrus.Fields{
+		"when":            when,
+		"poolObjectsSize": poolSize,
+	}
+	for _, key := range []string{"blob", "commit", "tag", "tree"} {
+		fields["dangling."+key+".ref"] = counts[key]
 	}
 
-	entry.Info("pool dangling ref stats")
+	grpc_logrus.Extract(ctx).WithFields(fields).Info("pool dangling ref stats")
 
 	return nil
+}
+
+func sizeObjectDir(ctx context.Context, dir string) (int64, error) {
+	// du -k reports size in KB
+	cmd, err := command.New(ctx, exec.Command("du", "-sk", filepath.Join(dir, "objects")), nil, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	sizeLine, err := ioutil.ReadAll(cmd)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return 0, err
+	}
+
+	sizeParts := bytes.Split(sizeLine, []byte("\t"))
+	if len(sizeParts) != 2 {
+		return 0, fmt.Errorf("malformed du output: %q", sizeLine)
+	}
+
+	size, err := strconv.ParseInt(string(sizeParts[0]), 10, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	// Convert KB to B
+	return size * 1024, nil
 }
