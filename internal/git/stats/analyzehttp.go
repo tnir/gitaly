@@ -39,10 +39,10 @@ type get struct {
 // Perform does a Git HTTP clone, discarding cloned data to /dev/null.
 func (st *Clone) Perform(ctx context.Context) error {
 	if err := st.doGet(ctx); err != nil {
-		return err
+		return ctxErr(ctx, err)
 	}
 	if err := st.doPost(ctx); err != nil {
-		return err
+		return ctxErr(ctx, err)
 	}
 
 	if st.JSON {
@@ -55,6 +55,13 @@ func (st *Clone) Perform(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func ctxErr(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func (st *Clone) doGet(ctx context.Context) error {
