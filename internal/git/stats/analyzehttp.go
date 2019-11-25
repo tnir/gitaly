@@ -3,6 +3,7 @@ package stats
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,28 @@ type get struct {
 	refs               int
 }
 
-func (st *Clone) DoGet() error {
+// Perform does a Git HTTP clone, discarding cloned data to /dev/null.
+func (st *Clone) Perform(ctx context.Context) error {
+	if err := st.doGet(); err != nil {
+		return err
+	}
+	if err := st.doPost(); err != nil {
+		return err
+	}
+
+	if st.JSON {
+		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.get); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.post); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (st *Clone) doGet() error {
 	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
 	if err != nil {
 		return err
@@ -164,7 +186,7 @@ const (
 	bandMax = 3
 )
 
-func (st *Clone) DoPost() error {
+func (st *Clone) doPost() error {
 	st.multiband = make(map[string]*bandInfo)
 	for i := byte(bandMin); i < bandMax; i++ {
 		band, err := bandToHuman(i)
@@ -323,15 +345,6 @@ func (st *Clone) DoPost() error {
 	for s := range payloadSizeHistogram {
 		if s > st.post.largestPayloadSize {
 			st.post.largestPayloadSize = s
-		}
-	}
-
-	if st.JSON {
-		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.get); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.post); err != nil {
-			return err
 		}
 	}
 
