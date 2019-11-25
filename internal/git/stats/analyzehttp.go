@@ -38,10 +38,10 @@ type get struct {
 
 // Perform does a Git HTTP clone, discarding cloned data to /dev/null.
 func (st *Clone) Perform(ctx context.Context) error {
-	if err := st.doGet(); err != nil {
+	if err := st.doGet(ctx); err != nil {
 		return err
 	}
-	if err := st.doPost(); err != nil {
+	if err := st.doPost(ctx); err != nil {
 		return err
 	}
 
@@ -57,11 +57,13 @@ func (st *Clone) Perform(ctx context.Context) error {
 	return nil
 }
 
-func (st *Clone) doGet() error {
+func (st *Clone) doGet(ctx context.Context) error {
 	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
 	if err != nil {
 		return err
 	}
+
+	req = req.WithContext(ctx)
 
 	for k, v := range map[string]string{
 		"User-Agent":      "gitaly-debug",
@@ -186,7 +188,7 @@ const (
 	bandMax = 3
 )
 
-func (st *Clone) doPost() error {
+func (st *Clone) doPost(ctx context.Context) error {
 	st.multiband = make(map[string]*bandInfo)
 	for i := byte(bandMin); i < bandMax; i++ {
 		band, err := bandToHuman(i)
@@ -220,6 +222,8 @@ func (st *Clone) doPost() error {
 	if err != nil {
 		return err
 	}
+
+	req = req.WithContext(ctx)
 
 	for k, v := range map[string]string{
 		"User-Agent":       "gitaly-debug",
