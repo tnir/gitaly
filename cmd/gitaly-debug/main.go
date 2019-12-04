@@ -16,7 +16,7 @@ simulate-http-clone GIT_DIR
 	the workload also depends on the transport capabilities requested by
 	the client; this tool uses a fixed set of capabilities.
 
-analyze-http-clone [-json] HTTP_URL
+analyze-http-clone HTTP_URL
 	Clones a Git repository from a public HTTP URL into /dev/null.
 
 list-bitmap-pack IDX_FILE
