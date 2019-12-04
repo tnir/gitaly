@@ -15,9 +15,10 @@ import (
 )
 
 type Clone struct {
-	URL  string
-	JSON bool
-	Out  io.Writer
+	URL         string
+	Interactive bool
+	Out         io.Writer
+	Record      func(string, float64)
 
 	wants []string
 	get
@@ -25,15 +26,10 @@ type Clone struct {
 }
 
 type get struct {
-	start              time.Time
-	responseHeaderTime time.Duration
-	firstPacketTime    time.Duration
-	totalTime          time.Duration
-	gzip               bool
-	status             int
-	payloadSize        int64
-	packets            int
-	refs               int
+	start       time.Time
+	payloadSize int64
+	packets     int
+	refs        int
 }
 
 // Perform does a Git HTTP clone, discarding cloned data to /dev/null.
@@ -45,15 +41,6 @@ func (st *Clone) Perform(ctx context.Context) error {
 		return ctxErr(ctx, err)
 	}
 
-	if st.JSON {
-		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.get); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(st.Out, "%+v\n", st.post); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -63,6 +50,8 @@ func ctxErr(ctx context.Context, err error) error {
 	}
 	return err
 }
+
+func (st *Clone) recordDuration(key string, t time.Time) { st.Record(key, time.Since(t).Seconds()) }
 
 func (st *Clone) doGet(ctx context.Context) error {
 	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
@@ -90,17 +79,14 @@ func (st *Clone) doGet(ctx context.Context) error {
 		return err
 	}
 
-	st.get.responseHeaderTime = time.Since(st.get.start)
-	st.get.status = resp.StatusCode
+	st.recordDuration("get_response_header_seconds", st.get.start)
+	st.Record("get_http_status", float64(resp.StatusCode))
 	defer resp.Body.Close()
 
-	st.msg("response after %v", st.get.responseHeaderTime)
 	st.msg("response header: %v", resp.Header)
-	st.msg("HTTP status code %d", st.get.status)
 
 	body := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
-		st.gzip = true
 		body, err = gzip.NewReader(body)
 		if err != nil {
 			return err
@@ -126,8 +112,8 @@ func (st *Clone) doGet(ctx context.Context) error {
 		st.get.payloadSize += int64(len(data))
 		switch st.get.packets {
 		case 0:
-			st.firstPacketTime = time.Since(st.get.start)
-			st.msg("first packet %v", st.firstPacketTime)
+			st.recordDuration("get_first_git_packet_seconds", st.get.start)
+
 			if data != "# service=git-upload-pack\n" {
 				return fmt.Errorf("unexpected header %q", data)
 			}
@@ -163,12 +149,12 @@ func (st *Clone) doGet(ctx context.Context) error {
 		return errors.New("missing flush in response")
 	}
 
-	st.get.totalTime = time.Since(st.get.start)
+	st.recordDuration("get_response_seconds", st.get.start)
+	st.Record("get_git_packets", float64(st.get.packets))
 
-	st.msg("received %d packets", st.get.packets)
-	st.msg("done in %v", st.get.totalTime)
-	st.msg("payload data: %d bytes", st.get.payloadSize)
-	st.msg("received %d refs, selected %d wants", st.get.refs, len(st.wants))
+	st.Record("get_git_packet_payload_bytes", float64(st.get.payloadSize))
+	st.Record("get_advertised_refs", float64(st.get.refs))
+	st.Record("get_wanted_refs", float64(len(st.wants)))
 
 	return nil
 }
@@ -252,12 +238,10 @@ func (st *Clone) doPost(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	st.post.responseHeaderTime = time.Since(st.post.start)
-	st.post.status = resp.StatusCode
+	st.recordDuration("post_response_header_seconds", st.post.start)
+	st.Record("post_http_status", float64(resp.StatusCode))
 
-	st.msg("response after %v", st.post.responseHeaderTime)
 	st.msg("response header: %v", resp.Header)
-	st.msg("HTTP status code %d", st.post.status)
 
 	// Expected response:
 	// - "NAK\n"
@@ -280,8 +264,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 			if !bytes.Equal([]byte("NAK\n"), data) {
 				return fmt.Errorf("expected NAK, got %q", data)
 			}
-			st.post.nakTime = time.Since(st.post.start)
-			st.msg("received NAK after %v", st.post.nakTime)
+			st.recordDuration("post_nak_seconds", st.post.start)
 			continue
 		}
 
@@ -306,14 +289,13 @@ func (st *Clone) doPost(ctx context.Context) error {
 
 		info := st.post.multiband[band]
 		if info.packets == 0 {
-			info.first = time.Since(st.post.start)
-			st.msg("received first %s packet after %v", band, info.first)
+			st.recordDuration("post_first_"+band+"_band_seconds", st.post.start)
 		}
 
 		info.packets++
 
 		// Print progress data as-is
-		if !st.JSON && band == "progress" {
+		if st.Interactive && band == "progress" {
 			if _, err := st.Out.Write(data[1:]); err != nil {
 				return err
 			}
@@ -323,14 +305,14 @@ func (st *Clone) doPost(ctx context.Context) error {
 		info.size += int64(n)
 		payloadSizeHistogram[n]++
 
-		if !st.JSON && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
+		if st.Interactive && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
 			if _, err := fmt.Fprint(st.Out, "."); err != nil {
 				return err
 			}
 		}
 	}
 
-	if !st.JSON {
+	if st.Interactive {
 		// Trailing newline for progress dots.
 		if _, err := fmt.Fprintln(st.Out, ""); err != nil {
 			return err
@@ -343,21 +325,23 @@ func (st *Clone) doPost(ctx context.Context) error {
 	if !seenFlush {
 		return errors.New("POST response did not end in flush")
 	}
-	st.post.totalTime = time.Since(st.post.start)
 
-	st.msg("received %d packets", st.post.packets)
-	st.msg("done in %v", st.post.totalTime)
+	st.recordDuration("post_response_seconds", st.post.start)
+	st.Record("post_git_packets", float64(st.post.packets))
 
 	for band, info := range st.post.multiband {
-		st.msg("%8s band: %10d payload bytes, %6d packets", band, info.size, info.packets)
+		key := "post_" + band + "_band"
+		st.Record(key+"_packets", float64(info.packets))
+		st.Record(key+"_payload_bytes", float64(info.size))
 	}
-	st.msg("packet payload size histogram: %v", payloadSizeHistogram)
 
 	for s := range payloadSizeHistogram {
 		if s > st.post.largestPayloadSize {
 			st.post.largestPayloadSize = s
 		}
 	}
+
+	st.Record("post_largest_git_packet_payload_bytes", float64(st.post.largestPayloadSize))
 
 	return nil
 }
@@ -376,7 +360,7 @@ func bandToHuman(b byte) (string, error) {
 }
 
 func (st *Clone) msg(format string, a ...interface{}) error {
-	if st.JSON {
+	if !st.Interactive {
 		return nil
 	}
 
