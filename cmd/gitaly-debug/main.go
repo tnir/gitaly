@@ -50,6 +50,9 @@ func main() {
 		}
 		simulateHTTPClone(extraArgs[0])
 	case "analyze-http-clone":
+		if len(extraArgs) != 1 {
+			fatal(usage)
+		}
 		analyzeHTTPClone(extraArgs[0])
 	case "list-bitmap-pack":
 		if len(extraArgs) != 1 {
