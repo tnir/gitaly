@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 )
@@ -51,17 +50,7 @@ func main() {
 		}
 		simulateHTTPClone(extraArgs[0])
 	case "analyze-http-clone":
-		fs := flag.NewFlagSet("", flag.ContinueOnError)
-		useJSON := fs.Bool("json", false, "output JSON")
-		if err := fs.Parse(extraArgs); err != nil {
-			fatal(usage)
-		}
-
-		if fs.NArg() != 1 {
-			fatal(usage)
-		}
-
-		analyzeHTTPClone(fs.Arg(0), *useJSON)
+		analyzeHTTPClone(extraArgs[0])
 	case "list-bitmap-pack":
 		if len(extraArgs) != 1 {
 			fatal(usage)

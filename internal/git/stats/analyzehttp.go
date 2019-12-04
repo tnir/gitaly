@@ -6,8 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -17,7 +17,6 @@ import (
 type Clone struct {
 	URL         string
 	Interactive bool
-	Out         io.Writer
 	Record      func(string, float64)
 
 	wants []string
@@ -161,9 +160,6 @@ func (st *Clone) doGet(ctx context.Context) error {
 
 type post struct {
 	start              time.Time
-	totalTime          time.Duration
-	responseHeaderTime time.Duration
-	nakTime            time.Duration
 	multiband          map[string]*bandInfo
 	status             int
 	packets            int
@@ -171,7 +167,6 @@ type post struct {
 }
 
 type bandInfo struct {
-	first   time.Duration
 	size    int64
 	packets int
 }
@@ -296,7 +291,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 
 		// Print progress data as-is
 		if st.Interactive && band == "progress" {
-			if _, err := st.Out.Write(data[1:]); err != nil {
+			if _, err := os.Stdout.Write(data[1:]); err != nil {
 				return err
 			}
 		}
@@ -306,7 +301,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 		payloadSizeHistogram[n]++
 
 		if st.Interactive && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
-			if _, err := fmt.Fprint(st.Out, "."); err != nil {
+			if _, err := fmt.Print("."); err != nil {
 				return err
 			}
 		}
@@ -314,7 +309,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 
 	if st.Interactive {
 		// Trailing newline for progress dots.
-		if _, err := fmt.Fprintln(st.Out, ""); err != nil {
+		if _, err := fmt.Println(""); err != nil {
 			return err
 		}
 	}
@@ -364,7 +359,7 @@ func (st *Clone) msg(format string, a ...interface{}) error {
 		return nil
 	}
 
-	if _, err := fmt.Fprintln(st.Out, fmt.Sprintf(format, a...)); err != nil {
+	if _, err := fmt.Println(fmt.Sprintf(format, a...)); err != nil {
 		return err
 	}
 
