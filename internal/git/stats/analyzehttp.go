@@ -73,15 +73,15 @@ func (st *Clone) doGet(ctx context.Context) error {
 	st.msg("---")
 	st.msg("--- GET %v", req.URL)
 	st.msg("---")
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	st.recordDuration("get_response_header_seconds", st.get.start)
 	st.Record("get_http_status", float64(resp.StatusCode))
-	defer resp.Body.Close()
-
 	st.msg("response header: %v", resp.Header)
 
 	body := resp.Body
@@ -235,7 +235,6 @@ func (st *Clone) doPost(ctx context.Context) error {
 
 	st.recordDuration("post_response_header_seconds", st.post.start)
 	st.Record("post_http_status", float64(resp.StatusCode))
-
 	st.msg("response header: %v", resp.Header)
 
 	// Expected response:
