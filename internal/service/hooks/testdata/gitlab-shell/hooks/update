@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+
+# Tests inputs to update
+
+abort("FAIL") unless ARGV.size == 3 && !ARGV[0].empty? && !ARGV[1].empty? && !ARGV[2].empty?
+abort("FAIL") unless !ENV['GL_ID'].empty?
+
+puts "OK"
