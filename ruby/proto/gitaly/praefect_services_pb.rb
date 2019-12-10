@@ -14,7 +14,7 @@ module Gitaly
       self.unmarshal_class_method = :decode
       self.service_name = 'gitaly.InfoService'
 
-      rpc :ListRepositories, ListRepositoriesRequest, stream(ListRepositoriesResponse)
+      rpc :RepositoryReplicas, RepositoryReplicasRequest, RepositoryReplicasResponse
     end
 
     Stub = Service.rpc_stub_class
