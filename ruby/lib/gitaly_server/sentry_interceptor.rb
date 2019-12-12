@@ -50,7 +50,7 @@ module GitalyServer
         'system' => 'gitaly-ruby',
         'gitaly-ruby.method' => grpc_method,
         'gitaly-ruby.time_ms' => format("%.0f", (time_ms * 1000)),
-        Labkit::Correlation::CorrelationId::LOG_KEY.to_sym => Labkit::Correlation::CorrelationId.current_id,
+        Labkit::Correlation::CorrelationId::LOG_KEY.to_sym => Labkit::Correlation::CorrelationId.current_id
       }
       tags.merge!(call.metadata)
 
