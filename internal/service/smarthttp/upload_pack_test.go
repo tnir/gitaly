@@ -419,3 +419,8 @@ func TestUploadPackRequestForPartialCloneSuccess(t *testing.T) {
 	_, err = makePostUploadPackRequest(ctx, t, serverSocketPath, req, &requestBuffer)
 	require.NoError(t, err)
 }
+
+func TestServer_ContainsAll(t *testing.T) {
+	require.True(t, containsAll([]byte(`some dataplaced here`), []byte("data"), []byte("placed"), []byte("here")))
+	require.False(t, containsAll([]byte(`some data placed here`), []byte("data"), []byte("placed"), []byte("data")))
+}

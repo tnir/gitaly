@@ -1,15 +1,21 @@
 package smarthttp
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"io/ioutil"
 
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/prometheus/client_golang/prometheus"
 	"gitlab.com/gitlab-org/gitaly/internal/command"
 	"gitlab.com/gitlab-org/gitaly/internal/git"
+	"gitlab.com/gitlab-org/gitaly/internal/git/pktline"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
+	"gitlab.com/gitlab-org/gitaly/internal/helper/text"
 	"gitlab.com/gitlab-org/gitaly/internal/metadata/featureflag"
 	"gitlab.com/gitlab-org/gitaly/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/streamio"
@@ -64,6 +70,10 @@ func (s *server) PostUploadPack(stream gitalypb.SmartHTTPService_PostUploadPackS
 		respBytes += int64(len(p))
 		return stream.Send(&gitalypb.PostUploadPackResponse{Data: p})
 	})
+
+	// TODO: it is first step of the https://gitlab.com/gitlab-org/gitaly/issues/1519
+	// needs to be removed after we get some statistics on this
+	stdout = inspect(stdout, logPackInfoStatistic(ctx))
 
 	env := git.AddGitProtocolEnv(ctx, req, command.GitEnv)
 
@@ -120,4 +130,58 @@ func validateUploadPackRequest(req *gitalypb.PostUploadPackRequest) error {
 	}
 
 	return nil
+}
+
+func inspect(writer io.Writer, action func(reader io.Reader)) io.Writer {
+	pr, pw := io.Pipe()
+	multiOut := io.MultiWriter(pw, writer)
+
+	go func() {
+		defer func() {
+			io.Copy(ioutil.Discard, pr)
+			pw.Close()
+		}()
+
+		action(pr)
+	}()
+
+	return multiOut
+}
+
+// logPackInfoStatistic inspect data stream for the informational messages
+// and logs info about pack file usage
+func logPackInfoStatistic(ctx context.Context) func(reader io.Reader) {
+	return func(reader io.Reader) {
+		markerBytes := []byte("002b") // marker of the progress information packet
+		totalBytes := []byte("Total")
+		deltaBytes := []byte("delta")
+		reusedBytes := []byte("reused")
+
+		logger := ctxlogrus.Extract(ctx)
+
+		scanner := pktline.NewScanner(reader)
+		for scanner.Scan() {
+			pktBytes := scanner.Bytes()
+			if !containsAll(pktBytes, markerBytes, totalBytes, deltaBytes, reusedBytes, deltaBytes) {
+				continue
+			}
+
+			logger.WithField("pack.stat", text.ChompBytes(pktline.Data(pktBytes)[1:])).Info("pack file compression statistic")
+		}
+		// we are not interested in scanner.Err()
+	}
+}
+
+// containsAll checks if all provided bytes included into the src and placed one after another
+// any number of any data allowed between two slices of expected bytes
+func containsAll(src []byte, parts ...[]byte) bool {
+	skip := 0
+	for _, part := range parts {
+		idx := bytes.Index(src[skip:], part)
+		if idx < 0 {
+			return false
+		}
+		skip += idx + len(part)
+	}
+	return true
 }
