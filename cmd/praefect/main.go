@@ -1,3 +1,15 @@
+// Command praefect provides a reverse-proxy server with high-availability
+// specific features for Gitaly.
+//
+// Additionally, praefect has subcommands for common tasks:
+//
+// SQL Ping
+//
+// The subcommand "sql-ping" checks if the database configured in the config
+// file is reachable:
+//
+//     praefect sql-ping -config PATH_TO_CONFIG
+//
 package main
 
 import (
@@ -194,6 +206,8 @@ func subCommand(conf config.Config, arg0 string, argRest []string) int {
 	switch arg0 {
 	case "sql-ping":
 		return sqlPing(conf)
+	case "dial-nodes":
+		return dialNodes(conf)
 	default:
 		fmt.Printf("%s: unknown subcommand: %q\n", progname, arg0)
 		return 1
