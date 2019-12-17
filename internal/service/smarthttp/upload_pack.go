@@ -152,36 +152,17 @@ func inspect(writer io.Writer, action func(reader io.Reader)) io.Writer {
 // and logs info about pack file usage
 func logPackInfoStatistic(ctx context.Context) func(reader io.Reader) {
 	return func(reader io.Reader) {
-		markerBytes := []byte("002b") // marker of the progress information packet
-		totalBytes := []byte("Total")
-		deltaBytes := []byte("delta")
-		reusedBytes := []byte("reused")
-
 		logger := ctxlogrus.Extract(ctx)
 
 		scanner := pktline.NewScanner(reader)
 		for scanner.Scan() {
-			pktBytes := scanner.Bytes()
-			if !containsAll(pktBytes, markerBytes, totalBytes, deltaBytes, reusedBytes, deltaBytes) {
+			pktData := pktline.Data(scanner.Bytes())
+			if !bytes.HasPrefix(pktData, []byte("\x02Total ")) {
 				continue
 			}
 
-			logger.WithField("pack.stat", text.ChompBytes(pktline.Data(pktBytes)[1:])).Info("pack file compression statistic")
+			logger.WithField("pack.stat", text.ChompBytes(pktData[1:])).Info("pack file compression statistic")
 		}
 		// we are not interested in scanner.Err()
 	}
-}
-
-// containsAll checks if all provided bytes included into the src and placed one after another
-// any number of any data allowed between two slices of expected bytes
-func containsAll(src []byte, parts ...[]byte) bool {
-	skip := 0
-	for _, part := range parts {
-		idx := bytes.Index(src[skip:], part)
-		if idx < 0 {
-			return false
-		}
-		skip += idx + len(part)
-	}
-	return true
 }
