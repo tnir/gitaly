@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
 	"gitlab.com/gitlab-org/gitaly/internal/git/pktline"
 )
 
@@ -21,47 +19,30 @@ type Clone struct {
 	Interactive bool
 	Record      func(string, float64)
 
-	reg        *prometheus.Registry
-	gauges     map[string]prometheus.Gauge
-	bandGauges map[string]*prometheus.GaugeVec
-	wants      []string
+	wants []string
 	get
 	post
 }
 
 type get struct {
-	start       time.Time
-	payloadSize int64
-	packets     int
-	refs        int
+	start          time.Time
+	responseHeader time.Duration
+	httpStatus     int
+	firstGitPacket time.Duration
+	responseBody   time.Duration
+	payloadSize    int64
+	packets        int
+	refs           int
 }
 
 // Perform does a Git HTTP clone, discarding cloned data to /dev/null.
 func (st *Clone) Perform(ctx context.Context) error {
-	if err := st.buildRegistry(); err != nil {
-		return err
-	}
 
 	if err := st.doGet(ctx); err != nil {
 		return ctxErr(ctx, err)
 	}
 	if err := st.doPost(ctx); err != nil {
 		return ctxErr(ctx, err)
-	}
-
-	if !st.Interactive {
-		return nil
-	}
-
-	mfs, err := st.reg.Gather()
-	if err != nil {
-		return err
-	}
-
-	for _, mf := range mfs {
-		if _, err := expfmt.MetricFamilyToText(os.Stdout, mf); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -74,94 +55,27 @@ func ctxErr(ctx context.Context, err error) error {
 	return err
 }
 
-type metric string
+/*
+	"get_response_header_seconds":           "Time to Git HTTP GET response header",
+	"get_http_status":                       "Git HTTP GET status code",
+	"get_first_git_packet_seconds":          "Time to first Git packet in HTTP response",
+	"get_response_seconds":                  "Time to complete Git HTTP GET roundtrip",
+	"get_git_packets":                       "Number of Git packets in HTTP GET response",
+	"get_git_packet_payload_bytes":          "Number of Git payload bytes in HTTP GET response",
+	"get_advertised_refs":                   "Number of refs advertised by Git HTTP server",
+	"get_wanted_refs":                       "Number of refs selected for Git HTTP clone",
+	"post_response_header_seconds":          "Time to Git HTTP POST response header",
+	"post_http_status":                      "Git HTTP POST status code",
+	"post_nak_seconds":                      "Time to NAK Git packet in HTTP POST response",
+	"post_response_seconds":                 "Time to complete Git HTTP POST roundtrip",
+	"post_largest_git_packet_payload_bytes": "Largest Git packet payload in POST response",
+*/
 
-func (st *Clone) buildRegistry() error {
-	st.gauges = make(map[string]prometheus.Gauge)
-	st.reg = prometheus.NewRegistry()
-
-	for key, help := range map[string]string{
-		"get_response_header_seconds":           "Time to Git HTTP GET response header",
-		"get_http_status":                       "Git HTTP GET status code",
-		"get_first_git_packet_seconds":          "Time to first Git packet in HTTP response",
-		"get_response_seconds":                  "Time to complete Git HTTP GET roundtrip",
-		"get_git_packets":                       "Number of Git packets in HTTP GET response",
-		"get_git_packet_payload_bytes":          "Number of Git payload bytes in HTTP GET response",
-		"get_advertised_refs":                   "Number of refs advertised by Git HTTP server",
-		"get_wanted_refs":                       "Number of refs selected for Git HTTP clone",
-		"post_response_header_seconds":          "Time to Git HTTP POST response header",
-		"post_http_status":                      "Git HTTP POST status code",
-		"post_nak_seconds":                      "Time to NAK Git packet in HTTP POST response",
-		"post_response_seconds":                 "Time to complete Git HTTP POST roundtrip",
-		"post_largest_git_packet_payload_bytes": "Largest Git packet payload in POST response",
-	} {
-		st.gauges[key] = prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: key,
-			Help: help,
-		})
-
-		if err := st.reg.Register(st.gauges[key]); err != nil {
-			return err
-		}
-	}
-
-	st.bandGauges = make(map[string]*prometheus.GaugeVec)
-	for key, help := range map[string]string{
-		"post_first_git_packet_seconds": "Time to first Git packet in HTTP POST response",
-		"post_git_packets":              "Number of Git packets in HTTP POST response",
-		"post_git_payload_bytes":        "Git packet payload bytes in HTTP POST response",
-	} {
-		st.bandGauges[key] = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: key,
-				Help: help,
-			},
-			[]string{"band"},
-		)
-
-		if err := st.reg.Register(st.bandGauges[key]); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (st *Clone) recordDuration(key string, t time.Time) {
-	gauge, ok := st.gauges[key]
-	if !ok {
-		panic("invalid metric key: " + key)
-	}
-
-	gauge.Set(time.Since(t).Seconds())
-}
-
-func (st *Clone) record(key string, x float64) {
-	gauge, ok := st.gauges[key]
-	if !ok {
-		panic("invalid metric key: " + key)
-	}
-
-	gauge.Set(x)
-}
-
-func (st *Clone) recordDurationBand(key string, band string, t time.Time) {
-	gauge, ok := st.bandGauges[key]
-	if !ok {
-		panic("invalid metric key: " + key)
-	}
-
-	gauge.WithLabelValues(band).Set(time.Since(t).Seconds())
-}
-
-func (st *Clone) recordBand(key string, band string, x float64) {
-	gauge, ok := st.bandGauges[key]
-	if !ok {
-		panic("invalid metric key: " + key)
-	}
-
-	gauge.WithLabelValues(band).Set(x)
-}
+/*
+	"post_first_git_packet_seconds": "Time to first Git packet in HTTP POST response",
+	"post_git_packets":              "Number of Git packets in HTTP POST response",
+	"post_git_payload_bytes":        "Git packet payload bytes in HTTP POST response",
+*/
 
 func (st *Clone) doGet(ctx context.Context) error {
 	req, err := http.NewRequest("GET", st.URL+"/info/refs?service=git-upload-pack", nil)
@@ -181,9 +95,9 @@ func (st *Clone) doGet(ctx context.Context) error {
 	}
 
 	st.get.start = time.Now()
-	st.msg("---")
-	st.msg("--- GET %v", req.URL)
-	st.msg("---")
+	st.printInteractive("---")
+	st.printInteractive("--- GET %v", req.URL)
+	st.printInteractive("---")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -191,9 +105,9 @@ func (st *Clone) doGet(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	st.recordDuration("get_response_header_seconds", st.get.start)
-	st.record("get_http_status", float64(resp.StatusCode))
-	st.msg("response header: %v", resp.Header)
+	st.get.responseHeader = time.Since(st.get.start)
+	st.get.httpStatus = resp.StatusCode
+	st.printInteractive("response header: %v", resp.Header)
 
 	body := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
@@ -222,7 +136,7 @@ func (st *Clone) doGet(ctx context.Context) error {
 		st.get.payloadSize += int64(len(data))
 		switch st.get.packets {
 		case 0:
-			st.recordDuration("get_first_git_packet_seconds", st.get.start)
+			st.get.firstGitPacket = time.Since(st.get.start)
 
 			if data != "# service=git-upload-pack\n" {
 				return fmt.Errorf("unexpected header %q", data)
@@ -259,27 +173,27 @@ func (st *Clone) doGet(ctx context.Context) error {
 		return errors.New("missing flush in response")
 	}
 
-	st.recordDuration("get_response_seconds", st.get.start)
-	st.record("get_git_packets", float64(st.get.packets))
-
-	st.record("get_git_packet_payload_bytes", float64(st.get.payloadSize))
-	st.record("get_advertised_refs", float64(st.get.refs))
-	st.record("get_wanted_refs", float64(len(st.wants)))
+	st.get.responseBody = time.Since(st.get.start)
 
 	return nil
 }
 
 type post struct {
 	start              time.Time
+	responseHeader     time.Duration
+	httpStatus         int
+	nak                time.Duration
 	multiband          map[string]*bandInfo
+	responseBody       time.Duration
 	status             int
 	packets            int
 	largestPayloadSize int
 }
 
 type bandInfo struct {
-	size    int64
-	packets int
+	firstPacket time.Duration
+	size        int64
+	packets     int
 }
 
 const (
@@ -334,9 +248,9 @@ func (st *Clone) doPost(ctx context.Context) error {
 	}
 
 	st.post.start = time.Now()
-	st.msg("---")
-	st.msg("--- POST %v", req.URL)
-	st.msg("---")
+	st.printInteractive("---")
+	st.printInteractive("--- POST %v", req.URL)
+	st.printInteractive("---")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -344,9 +258,9 @@ func (st *Clone) doPost(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	st.recordDuration("post_response_header_seconds", st.post.start)
-	st.record("post_http_status", float64(resp.StatusCode))
-	st.msg("response header: %v", resp.Header)
+	st.post.responseHeader = time.Since(st.post.start)
+	st.post.httpStatus = resp.StatusCode
+	st.printInteractive("response header: %v", resp.Header)
 
 	// Expected response:
 	// - "NAK\n"
@@ -369,7 +283,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 			if !bytes.Equal([]byte("NAK\n"), data) {
 				return fmt.Errorf("expected NAK, got %q", data)
 			}
-			st.recordDuration("post_nak_seconds", st.post.start)
+			st.post.nak = time.Since(st.post.start)
 			continue
 		}
 
@@ -394,7 +308,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 
 		info := st.post.multiband[band]
 		if info.packets == 0 {
-			st.recordDurationBand("post_first_git_packet_seconds", band, st.post.start)
+			st.post.multiband[band].firstPacket = time.Since(st.post.start)
 		}
 
 		info.packets++
@@ -431,20 +345,13 @@ func (st *Clone) doPost(ctx context.Context) error {
 		return errors.New("POST response did not end in flush")
 	}
 
-	st.recordDuration("post_response_seconds", st.post.start)
-
-	for band, info := range st.post.multiband {
-		st.recordBand("post_git_packets", band, float64(info.packets))
-		st.recordBand("post_git_payload_bytes", band, float64(info.size))
-	}
+	st.post.responseBody = time.Since(st.post.start)
 
 	for s := range payloadSizeHistogram {
 		if s > st.post.largestPayloadSize {
 			st.post.largestPayloadSize = s
 		}
 	}
-
-	st.record("post_largest_git_packet_payload_bytes", float64(st.post.largestPayloadSize))
 
 	return nil
 }
@@ -462,7 +369,7 @@ func bandToHuman(b byte) (string, error) {
 	}
 }
 
-func (st *Clone) msg(format string, a ...interface{}) error {
+func (st *Clone) printInteractive(format string, a ...interface{}) error {
 	if !st.Interactive {
 		return nil
 	}
