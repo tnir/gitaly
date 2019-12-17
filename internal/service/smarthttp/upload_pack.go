@@ -1,22 +1,17 @@
 package smarthttp
 
 import (
-	"bytes"
-	"context"
 	"crypto/sha1"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/prometheus/client_golang/prometheus"
 	"gitlab.com/gitlab-org/gitaly/internal/command"
 	"gitlab.com/gitlab-org/gitaly/internal/git"
-	"gitlab.com/gitlab-org/gitaly/internal/git/pktline"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
-	"gitlab.com/gitlab-org/gitaly/internal/helper/text"
 	"gitlab.com/gitlab-org/gitaly/internal/metadata/featureflag"
+	"gitlab.com/gitlab-org/gitaly/internal/service/inspect"
 	"gitlab.com/gitlab-org/gitaly/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/streamio"
 	"google.golang.org/grpc/codes"
@@ -73,7 +68,7 @@ func (s *server) PostUploadPack(stream gitalypb.SmartHTTPService_PostUploadPackS
 
 	// TODO: it is first step of the https://gitlab.com/gitlab-org/gitaly/issues/1519
 	// needs to be removed after we get some statistics on this
-	stdout = inspect(stdout, logPackInfoStatistic(ctx))
+	stdout = inspect.Write(stdout, inspect.LogPackInfoStatistic(ctx))
 
 	env := git.AddGitProtocolEnv(ctx, req, command.GitEnv)
 
@@ -130,39 +125,4 @@ func validateUploadPackRequest(req *gitalypb.PostUploadPackRequest) error {
 	}
 
 	return nil
-}
-
-func inspect(writer io.Writer, action func(reader io.Reader)) io.Writer {
-	pr, pw := io.Pipe()
-	multiOut := io.MultiWriter(pw, writer)
-
-	go func() {
-		defer func() {
-			io.Copy(ioutil.Discard, pr)
-			pw.Close()
-		}()
-
-		action(pr)
-	}()
-
-	return multiOut
-}
-
-// logPackInfoStatistic inspect data stream for the informational messages
-// and logs info about pack file usage
-func logPackInfoStatistic(ctx context.Context) func(reader io.Reader) {
-	return func(reader io.Reader) {
-		logger := ctxlogrus.Extract(ctx)
-
-		scanner := pktline.NewScanner(reader)
-		for scanner.Scan() {
-			pktData := pktline.Data(scanner.Bytes())
-			if !bytes.HasPrefix(pktData, []byte("\x02Total ")) {
-				continue
-			}
-
-			logger.WithField("pack.stat", text.ChompBytes(pktData[1:])).Info("pack file compression statistic")
-		}
-		// we are not interested in scanner.Err()
-	}
 }
