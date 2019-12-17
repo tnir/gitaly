@@ -17,14 +17,13 @@ import (
 type Clone struct {
 	URL         string
 	Interactive bool
-	Record      func(string, float64)
 
 	wants []string
-	get
-	post
+	Get
+	Post
 }
 
-type get struct {
+type Get struct {
 	start          time.Time
 	responseHeader time.Duration
 	httpStatus     int
@@ -34,6 +33,15 @@ type get struct {
 	packets        int
 	refs           int
 }
+
+func (g *Get) ResponseHeader() time.Duration { return g.responseHeader }
+func (g *Get) HTTPStatus() int               { return g.httpStatus }
+func (g *Get) FirstGitPacket() time.Duration { return g.firstGitPacket }
+func (g *Get) ResponseBody() time.Duration   { return g.responseBody }
+func (g *Get) PayloadSize() int64            { return g.payloadSize }
+func (g *Get) Packets() int                  { return g.packets }
+func (g *Get) RefsAdvertised() int           { return g.refs }
+func (st *Clone) RefsWanted() int            { return len(st.wants) }
 
 // Perform does a Git HTTP clone, discarding cloned data to /dev/null.
 func (st *Clone) Perform(ctx context.Context) error {
@@ -94,7 +102,7 @@ func (st *Clone) doGet(ctx context.Context) error {
 		req.Header.Set(k, v)
 	}
 
-	st.get.start = time.Now()
+	st.Get.start = time.Now()
 	st.printInteractive("---")
 	st.printInteractive("--- GET %v", req.URL)
 	st.printInteractive("---")
@@ -105,8 +113,9 @@ func (st *Clone) doGet(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	st.get.responseHeader = time.Since(st.get.start)
-	st.get.httpStatus = resp.StatusCode
+	st.Get.responseHeader = time.Since(st.Get.start)
+	st.Get.httpStatus = resp.StatusCode
+	st.printInteractive("response code: %d", resp.StatusCode)
 	st.printInteractive("response header: %v", resp.Header)
 
 	body := resp.Body
@@ -127,16 +136,16 @@ func (st *Clone) doGet(ctx context.Context) error {
 	//
 	seenFlush := false
 	scanner := pktline.NewScanner(body)
-	for ; scanner.Scan(); st.get.packets++ {
+	for ; scanner.Scan(); st.Get.packets++ {
 		if seenFlush {
 			return errors.New("received packet after flush")
 		}
 
 		data := string(pktline.Data(scanner.Bytes()))
-		st.get.payloadSize += int64(len(data))
-		switch st.get.packets {
+		st.Get.payloadSize += int64(len(data))
+		switch st.Get.packets {
 		case 0:
-			st.get.firstGitPacket = time.Since(st.get.start)
+			st.Get.firstGitPacket = time.Since(st.Get.start)
 
 			if data != "# service=git-upload-pack\n" {
 				return fmt.Errorf("unexpected header %q", data)
@@ -146,7 +155,7 @@ func (st *Clone) doGet(ctx context.Context) error {
 				return errors.New("missing flush after service announcement")
 			}
 		default:
-			if st.get.packets == 2 && !strings.Contains(data, " side-band-64k") {
+			if st.Get.packets == 2 && !strings.Contains(data, " side-band-64k") {
 				return fmt.Errorf("missing side-band-64k capability in %q", data)
 			}
 
@@ -159,7 +168,7 @@ func (st *Clone) doGet(ctx context.Context) error {
 			if len(split) != 2 {
 				continue
 			}
-			st.get.refs++
+			st.Get.refs++
 
 			if strings.HasPrefix(split[1], "refs/heads/") || strings.HasPrefix(split[1], "refs/tags/") {
 				st.wants = append(st.wants, split[0])
@@ -173,22 +182,32 @@ func (st *Clone) doGet(ctx context.Context) error {
 		return errors.New("missing flush in response")
 	}
 
-	st.get.responseBody = time.Since(st.get.start)
+	st.Get.responseBody = time.Since(st.Get.start)
 
 	return nil
 }
 
-type post struct {
+type Post struct {
 	start              time.Time
 	responseHeader     time.Duration
 	httpStatus         int
 	nak                time.Duration
 	multiband          map[string]*bandInfo
 	responseBody       time.Duration
-	status             int
 	packets            int
 	largestPayloadSize int
 }
+
+func (p *Post) ResponseHeader() time.Duration { return p.responseHeader }
+func (p *Post) HTTPStatus() int               { return p.httpStatus }
+func (p *Post) NAK() time.Duration            { return p.nak }
+func (p *Post) ResponseBody() time.Duration   { return p.responseBody }
+func (p *Post) Packets() int                  { return p.packets }
+func (p *Post) LargestPayloadSize() int       { return p.largestPayloadSize }
+
+func (p *Post) BandPackets(b string) int               { return p.multiband[b].packets }
+func (p *Post) BandPayloadSize(b string) int64         { return p.multiband[b].size }
+func (p *Post) BandFirstPacket(b string) time.Duration { return p.multiband[b].firstPacket }
 
 type bandInfo struct {
 	firstPacket time.Duration
@@ -201,13 +220,11 @@ const (
 	bandMax = 3
 )
 
+func Bands() []string { return []string{"pack", "progress", "error"} }
+
 func (st *Clone) doPost(ctx context.Context) error {
 	st.multiband = make(map[string]*bandInfo)
-	for i := byte(bandMin); i < bandMax; i++ {
-		band, err := bandToHuman(i)
-		if err != nil {
-			return err
-		}
+	for _, band := range Bands() {
 		st.multiband[band] = &bandInfo{}
 	}
 
@@ -247,7 +264,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 		req.Header.Set(k, v)
 	}
 
-	st.post.start = time.Now()
+	st.Post.start = time.Now()
 	st.printInteractive("---")
 	st.printInteractive("--- POST %v", req.URL)
 	st.printInteractive("---")
@@ -258,8 +275,9 @@ func (st *Clone) doPost(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	st.post.responseHeader = time.Since(st.post.start)
-	st.post.httpStatus = resp.StatusCode
+	st.Post.responseHeader = time.Since(st.Post.start)
+	st.Post.httpStatus = resp.StatusCode
+	st.printInteractive("response code: %d", resp.StatusCode)
 	st.printInteractive("response header: %v", resp.Header)
 
 	// Expected response:
@@ -272,18 +290,18 @@ func (st *Clone) doPost(ctx context.Context) error {
 	scanner := pktline.NewScanner(resp.Body)
 	payloadSizeHistogram := make(map[int]int)
 	seenFlush := false
-	for ; scanner.Scan(); st.post.packets++ {
+	for ; scanner.Scan(); st.Post.packets++ {
 		if seenFlush {
 			return errors.New("received extra packet after flush")
 		}
 
 		data := pktline.Data(scanner.Bytes())
 
-		if st.post.packets == 0 {
+		if st.Post.packets == 0 {
 			if !bytes.Equal([]byte("NAK\n"), data) {
 				return fmt.Errorf("expected NAK, got %q", data)
 			}
-			st.post.nak = time.Since(st.post.start)
+			st.Post.nak = time.Since(st.Post.start)
 			continue
 		}
 
@@ -306,9 +324,9 @@ func (st *Clone) doPost(ctx context.Context) error {
 			return err
 		}
 
-		info := st.post.multiband[band]
+		info := st.Post.multiband[band]
 		if info.packets == 0 {
-			st.post.multiband[band].firstPacket = time.Since(st.post.start)
+			st.Post.multiband[band].firstPacket = time.Since(st.Post.start)
 		}
 
 		info.packets++
@@ -324,7 +342,7 @@ func (st *Clone) doPost(ctx context.Context) error {
 		info.size += int64(n)
 		payloadSizeHistogram[n]++
 
-		if st.Interactive && st.post.packets%100 == 0 && st.post.packets > 0 && band == "pack" {
+		if st.Interactive && st.Post.packets%100 == 0 && st.Post.packets > 0 && band == "pack" {
 			if _, err := fmt.Print("."); err != nil {
 				return err
 			}
@@ -345,11 +363,11 @@ func (st *Clone) doPost(ctx context.Context) error {
 		return errors.New("POST response did not end in flush")
 	}
 
-	st.post.responseBody = time.Since(st.post.start)
+	st.Post.responseBody = time.Since(st.Post.start)
 
 	for s := range payloadSizeHistogram {
-		if s > st.post.largestPayloadSize {
-			st.post.largestPayloadSize = s
+		if s > st.Post.largestPayloadSize {
+			st.Post.largestPayloadSize = s
 		}
 	}
 
