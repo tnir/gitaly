@@ -30,7 +30,7 @@ func analyzeHTTPClone(cloneURL string) {
 		{"refs advertised", st.Get.RefsAdvertised()},
 		{"wanted refs", st.RefsWanted()},
 	} {
-		fmt.Printf("%s %v\n", entry.key, entry.value)
+		entry.print()
 	}
 
 	fmt.Println("\n--- POST metrics:")
@@ -41,7 +41,7 @@ func analyzeHTTPClone(cloneURL string) {
 		{"largest single Git packet payload", st.Post.LargestPayloadSize()},
 		{"Git packets received", st.Post.Packets()},
 	} {
-		fmt.Printf("%s %v\n", entry.key, entry.value)
+		entry.print()
 	}
 
 	for _, band := range stats.Bands() {
@@ -56,7 +56,9 @@ func analyzeHTTPClone(cloneURL string) {
 			{"packets", numPackets},
 			{"total payload size", st.Post.BandPayloadSize(band)},
 		} {
-			fmt.Printf("%s %v\n", entry.key, entry.value)
+			entry.print()
 		}
 	}
 }
+
+func (m metric) print() { fmt.Printf("%-40s %v\n", m.key, m.value) }
