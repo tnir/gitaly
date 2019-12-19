@@ -28,12 +28,12 @@ func TestInfo(t *testing.T) {
 	testCases := []struct {
 		desc   string
 		spec   string
-		output *ObjectInfo
+		output ObjectInfo
 	}{
 		{
 			desc: "gitignore",
 			spec: "60ecb67744cb56576c30214ff52294f8ce2def98:.gitignore",
-			output: &ObjectInfo{
+			output: ObjectInfo{
 				Oid:  "dfaa3f97ca337e20154a98ac9d0be76ddd1fcc82",
 				Type: "blob",
 				Size: 241,
@@ -110,10 +110,10 @@ func TestCommit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			commitReader, err := c.Commit(tc.spec)
+			obj, err := c.Commit(tc.spec)
 			require.NoError(t, err)
 
-			contents, err := ioutil.ReadAll(commitReader)
+			contents, err := ioutil.ReadAll(obj.Reader)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.output, string(contents))

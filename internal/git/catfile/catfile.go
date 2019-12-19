@@ -2,7 +2,6 @@ package catfile
 
 import (
 	"context"
-	"io"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -71,7 +70,7 @@ type Batch struct {
 
 // Info returns an ObjectInfo if spec exists. If spec does not exist the
 // error is of type NotFoundError.
-func (c *Batch) Info(revspec string) (*ObjectInfo, error) {
+func (c *Batch) Info(revspec string) (ObjectInfo, error) {
 	catfileLookupCounter.WithLabelValues("info").Inc()
 	return c.batchCheck.info(revspec)
 }
@@ -80,35 +79,35 @@ func (c *Batch) Info(revspec string) (*ObjectInfo, error) {
 // point to a tree. To prevent this firstuse Info to resolve the revspec
 // and check the object type. Caller must consume the Reader before
 // making another call on C.
-func (c *Batch) Tree(revspec string) (io.Reader, error) {
+func (c *Batch) Tree(revspec string) (Object, error) {
 	catfileLookupCounter.WithLabelValues("tree").Inc()
-	return c.batchProcess.reader(revspec, "tree")
+	return c.batchProcess.object(revspec, "tree")
 }
 
 // Commit returns a raw commit object. It is an error if revspec does not
 // point to a commit. To prevent this first use Info to resolve the revspec
 // and check the object type. Caller must consume the Reader before
 // making another call on C.
-func (c *Batch) Commit(revspec string) (io.Reader, error) {
+func (c *Batch) Commit(revspec string) (Object, error) {
 	catfileLookupCounter.WithLabelValues("commit").Inc()
-	return c.batchProcess.reader(revspec, "commit")
+	return c.batchProcess.object(revspec, "commit")
 }
 
-// Blob returns a reader for the requested blob. The entire blob must be
+// Blob returns a object for the requested blob. The entire blob must be
 // read before any new objects can be requested from this Batch instance.
 //
 // It is an error if revspec does not point to a blob. To prevent this
 // first use Info to resolve the revspec and check the object type.
-func (c *Batch) Blob(revspec string) (io.Reader, error) {
+func (c *Batch) Blob(revspec string) (Object, error) {
 	catfileLookupCounter.WithLabelValues("blob").Inc()
-	return c.batchProcess.reader(revspec, "blob")
+	return c.batchProcess.object(revspec, "blob")
 }
 
 // Tag returns a raw tag object. Caller must consume the Reader before
 // making another call on C.
-func (c *Batch) Tag(revspec string) (io.Reader, error) {
+func (c *Batch) Tag(revspec string) (Object, error) {
 	catfileLookupCounter.WithLabelValues("tag").Inc()
-	return c.batchProcess.reader(revspec, "tag")
+	return c.batchProcess.object(revspec, "tag")
 }
 
 // Close closes the writers for batchCheck and batch. This is only used for

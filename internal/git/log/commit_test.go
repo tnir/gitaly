@@ -11,7 +11,7 @@ import (
 )
 
 func TestParseRawCommit(t *testing.T) {
-	info := &catfile.ObjectInfo{
+	info := catfile.ObjectInfo{
 		Oid:  "a984dfa4dee018c6d5f5f57ffec0d0e22763df16",
 		Type: "commit",
 	}

@@ -58,7 +58,7 @@ const (
 	defaultFlatTreeRecursion = 10
 )
 
-func extractEntryInfoFromTreeData(treeData *bytes.Buffer, commitOid, rootOid, rootPath string, treeInfo *catfile.ObjectInfo) ([]*gitalypb.TreeEntry, error) {
+func extractEntryInfoFromTreeData(treeData *bytes.Buffer, commitOid, rootOid, rootPath string, treeInfo catfile.ObjectInfo) ([]*gitalypb.TreeEntry, error) {
 	if len(treeInfo.Oid) == 0 {
 		return nil, fmt.Errorf("empty tree oid")
 	}

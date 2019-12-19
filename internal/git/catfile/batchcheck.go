@@ -52,12 +52,12 @@ func newBatchCheck(ctx context.Context, repo repository.GitRepo) (*batchCheck, e
 	return bc, nil
 }
 
-func (bc *batchCheck) info(spec string) (*ObjectInfo, error) {
+func (bc *batchCheck) info(spec string) (ObjectInfo, error) {
 	bc.Lock()
 	defer bc.Unlock()
 
 	if _, err := fmt.Fprintln(bc.w, spec); err != nil {
-		return nil, err
+		return ObjectInfo{}, err
 	}
 
 	return ParseObjectInfo(bc.r)

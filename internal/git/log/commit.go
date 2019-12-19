@@ -29,17 +29,12 @@ func GetCommit(ctx context.Context, repo *gitalypb.Repository, revision string) 
 
 // GetCommitCatfile looks up a commit by revision using an existing *catfile.Batch instance.
 func GetCommitCatfile(c *catfile.Batch, revision string) (*gitalypb.GitCommit, error) {
-	info, err := c.Info(revision + "^{commit}")
+	obj, err := c.Commit(revision + "^{commit}")
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := c.Commit(info.Oid)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseRawCommit(r, info)
+	return parseRawCommit(obj.Reader, obj.ObjectInfo)
 }
 
 // GetCommitMessage looks up a commit message and returns it in its entirety.
@@ -49,24 +44,24 @@ func GetCommitMessage(c *catfile.Batch, repo *gitalypb.Repository, revision stri
 		return nil, err
 	}
 
-	r, err := c.Commit(info.Oid)
+	obj, err := c.Commit(info.Oid)
 	if err != nil {
 		return nil, err
 	}
 
-	_, body, err := splitRawCommit(r)
+	_, body, err := splitRawCommit(obj.Reader)
 	if err != nil {
 		return nil, err
 	}
 	return body, nil
 }
 
-func parseRawCommit(r io.Reader, info *catfile.ObjectInfo) (*gitalypb.GitCommit, error) {
+func parseRawCommit(r io.Reader, info catfile.ObjectInfo) (*gitalypb.GitCommit, error) {
 	header, body, err := splitRawCommit(r)
 	if err != nil {
 		return nil, err
 	}
-	return buildCommit(header, body, info)
+	return buildCommit(header, body, info.Oid)
 }
 
 func splitRawCommit(r io.Reader) ([]byte, []byte, error) {
@@ -86,9 +81,9 @@ func splitRawCommit(r io.Reader) ([]byte, []byte, error) {
 	return header, body, nil
 }
 
-func buildCommit(header, body []byte, info *catfile.ObjectInfo) (*gitalypb.GitCommit, error) {
+func buildCommit(header, body []byte, oid string) (*gitalypb.GitCommit, error) {
 	commit := &gitalypb.GitCommit{
-		Id:       info.Oid,
+		Id:       oid,
 		BodySize: int64(len(body)),
 		Body:     body,
 		Subject:  subjectFromBody(body),

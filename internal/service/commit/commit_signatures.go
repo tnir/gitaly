@@ -49,12 +49,12 @@ func getCommitSignatures(s *server, request *gitalypb.GetCommitSignaturesRequest
 			return helper.ErrInternal(fmt.Errorf("%q is not a commit", commitID))
 		}
 
-		reader, err := c.Commit(commitID)
+		obj, err := c.Commit(commitID)
 		if err != nil {
 			return helper.ErrInternal(err)
 		}
 
-		signatureKey, commitText, err := extractSignature(reader)
+		signatureKey, commitText, err := extractSignature(obj.Reader)
 		if err != nil {
 			return helper.ErrInternal(err)
 		}

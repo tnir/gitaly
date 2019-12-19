@@ -12,13 +12,13 @@ func TestParseObjectInfoSuccess(t *testing.T) {
 	testCases := []struct {
 		desc     string
 		input    string
-		output   *ObjectInfo
+		output   ObjectInfo
 		notFound bool
 	}{
 		{
 			desc:  "existing object",
 			input: "7c9373883988204e5a9f72c4a5119cbcefc83627 commit 222\n",
-			output: &ObjectInfo{
+			output: ObjectInfo{
 				Oid:  "7c9373883988204e5a9f72c4a5119cbcefc83627",
 				Type: "commit",
 				Size: 222,
