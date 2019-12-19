@@ -35,7 +35,8 @@ func TestLogPackInfoStatistic(t *testing.T) {
 	ctx := ctxlogrus.ToContext(context.Background(), log.WithField("test", "logging"))
 
 	logging := LogPackInfoStatistic(ctx)
-	logging(strings.NewReader("0038\x41ACK 1e292f8fedd741b75372e19097c76d327140c312 ready\n0035\x02Total 1044 (delta 519), reused 1035 (delta 512)\n0000\x01"))
+	logging(strings.NewReader("0038\x41ACK 1e292f8fedd741b75372e19097c76d327140c312 ready\n0035\x02Total 1044 (delta 519), reused 1035 (delta 512)\n0038\x41ACK 1e292f8fedd741b75372e19097c76d327140c312 ready\n0000\x01"))
 
 	require.Contains(t, dest.String(), "Total 1044 (delta 519), reused 1035 (delta 512)")
+	require.NotContains(t, dest.String(), "ACK 1e292f8fedd741b75372e19097c76d327140c312")
 }
