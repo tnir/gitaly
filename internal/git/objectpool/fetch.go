@@ -192,9 +192,13 @@ func repackPool(ctx context.Context, pool repository.GitRepo) error {
 }
 
 func (o *ObjectPool) logStats(ctx context.Context, when string) error {
-	poolSize, err := sizeObjectDir(ctx, o.FullPath())
-	if err != nil {
-		return err
+	dirSizes := make(map[string]int64)
+	for _, dir := range []string{"objects", "refs"} {
+		var err error
+		dirSizes[dir], err = sizeDir(ctx, filepath.Join(o.FullPath(), dir))
+		if err != nil {
+			return err
+		}
 	}
 
 	forEachRef, err := git.SafeCmd(ctx, o, nil, git.SubCmd{
@@ -221,7 +225,8 @@ func (o *ObjectPool) logStats(ctx context.Context, when string) error {
 
 	fields := logrus.Fields{
 		"when":            when,
-		"poolObjectsSize": poolSize,
+		"poolObjectsSize": dirSizes["objects"],
+		"poolRefsSize":    dirSizes["refs"],
 	}
 	for _, key := range []string{"blob", "commit", "tag", "tree"} {
 		fields["dangling."+key+".ref"] = counts[key]
@@ -232,9 +237,9 @@ func (o *ObjectPool) logStats(ctx context.Context, when string) error {
 	return nil
 }
 
-func sizeObjectDir(ctx context.Context, dir string) (int64, error) {
+func sizeDir(ctx context.Context, dir string) (int64, error) {
 	// du -k reports size in KB
-	cmd, err := command.New(ctx, exec.Command("du", "-sk", filepath.Join(dir, "objects")), nil, nil, nil)
+	cmd, err := command.New(ctx, exec.Command("du", "-sk", dir), nil, nil, nil)
 	if err != nil {
 		return 0, err
 	}
