@@ -515,15 +515,12 @@ func CreateLooseRef(t *testing.T, repoPath, refName string) {
 // environment variable TEST_TEMP_DIR_PATH. If that variable is unset, the
 // relative folder "./testdata/tmp" to this source file will be used.
 func TempDir(t *testing.T, prefix string) (string, func() error) {
-	rootTmpDir := os.Getenv("TEST_TEMP_DIR_PATH")
-	if rootTmpDir == "" {
-		_, currentFile, _, ok := runtime.Caller(0)
-		if !ok {
-			log.Fatal("Could not get caller info")
-		}
-		rootTmpDir = path.Join(path.Dir(currentFile), "testdata/tmp")
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("Could not get caller info")
 	}
 
+	rootTmpDir := path.Join(path.Dir(currentFile), "testdata/tmp")
 	dirPath, err := ioutil.TempDir(rootTmpDir, prefix)
 	require.NoError(t, err)
 	return dirPath, func() error {

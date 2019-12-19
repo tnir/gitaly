@@ -121,15 +121,6 @@ func (gm *gitalyMake) TestRepoStoragePath() string {
 	return path
 }
 
-func (gm *gitalyMake) TestTempDirPath() string {
-	path := os.Getenv("TEST_TEMP_DIR_PATH")
-	if len(path) == 0 {
-		log.Fatal("TEST_TEMP_DIR_PATH is not set")
-	}
-
-	return path
-}
-
 func (gm *gitalyMake) TestRepo() string {
 	return filepath.Join(gm.TestRepoStoragePath(), "gitlab-test.git")
 }
