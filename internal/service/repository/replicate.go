@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 
-	"gitlab.com/gitlab-org/gitaly/internal/safe"
-
 	"gitlab.com/gitlab-org/gitaly/client"
+	"gitlab.com/gitlab-org/gitaly/internal/command"
 	"gitlab.com/gitlab-org/gitaly/internal/config"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
+	"gitlab.com/gitlab-org/gitaly/internal/safe"
+	"gitlab.com/gitlab-org/gitaly/internal/tempdir"
 	"gitlab.com/gitlab-org/gitaly/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/streamio"
 	"golang.org/x/sync/errgroup"
@@ -23,19 +25,39 @@ func (s *server) ReplicateRepository(ctx context.Context, in *gitalypb.Replicate
 		return nil, helper.ErrInvalidArgument(err)
 	}
 
-	if _, err := s.CreateRepository(ctx, &gitalypb.CreateRepositoryRequest{
-		Repository: in.GetRepository(),
-	}); err != nil {
+	syncFuncs := []func(context.Context, *gitalypb.ReplicateRepositoryRequest) error{
+		syncInfoAttributes,
+	}
+
+	repoPath, err := helper.GetPath(in.GetRepository())
+	if err != nil {
 		return nil, helper.ErrInternal(err)
+	}
+
+	if helper.IsGitDirectory(repoPath) {
+		syncFuncs = append(syncFuncs, syncRepository)
+	} else {
+		// if the directory exists, remove it
+		if _, err = os.Stat(repoPath); err == nil {
+			tempDir, err := tempdir.ForDeleteAllRepositories(in.GetRepository().GetStorageName())
+			if err != nil {
+				return nil, helper.ErrInternal(err)
+			}
+
+			if err = os.Rename(repoPath, filepath.Join(tempDir, filepath.Base(repoPath))); err != nil {
+				return nil, helper.ErrInternal(err)
+			}
+		}
+
+		if err = s.createFromSnapshot(ctx, in); err != nil {
+			return nil, helper.ErrInternalf("could not create repository from snapshot: %v", err)
+		}
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	outgoingCtx := helper.IncomingToOutgoing(ctx)
 
-	for _, f := range []func(context.Context, *gitalypb.ReplicateRepositoryRequest) error{
-		syncRepository,
-		syncInfoAttributes,
-	} {
+	for _, f := range syncFuncs {
 		f := f // rescoping f
 		g.Go(func() error { return f(outgoingCtx, in) })
 	}
@@ -62,6 +84,54 @@ func validateReplicateRepository(in *gitalypb.ReplicateRepositoryRequest) error 
 
 	if in.GetRepository().GetStorageName() == in.GetSource().GetStorageName() {
 		return errors.New("repository and source have the same storage")
+	}
+
+	return nil
+}
+
+func (s *server) createFromSnapshot(ctx context.Context, in *gitalypb.ReplicateRepositoryRequest) error {
+	tempRepo, tempPath, err := tempdir.NewAsRepository(ctx, in.GetRepository())
+	if err != nil {
+		return err
+	}
+
+	if _, err := s.CreateRepository(ctx, &gitalypb.CreateRepositoryRequest{
+		Repository: tempRepo,
+	}); err != nil {
+		return err
+	}
+
+	repoClient, err := newRepoClient(ctx, in.GetSource().GetStorageName())
+	if err != nil {
+		return err
+	}
+
+	stream, err := repoClient.GetSnapshot(ctx, &gitalypb.GetSnapshotRequest{Repository: in.GetSource()})
+	if err != nil {
+		return err
+	}
+
+	snapshotReader := streamio.NewReader(func() ([]byte, error) {
+		resp, err := stream.Recv()
+		return resp.GetData(), err
+	})
+
+	cmd, err := command.New(ctx, exec.Command("tar", "-C", tempPath, "-xvf", "-"), snapshotReader, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	if err = cmd.Wait(); err != nil {
+		return err
+	}
+
+	targetPath, err := helper.GetPath(in.GetRepository())
+	if err != nil {
+		return err
+	}
+
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		return err
 	}
 
 	return nil

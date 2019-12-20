@@ -181,3 +181,59 @@ func TestReplicateRepositoryInvalidArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestReplicateRepository_BadRepository(t *testing.T) {
+	tmpPath, cleanup := testhelper.TempDir(t, testhelper.GitlabTestStoragePath(), t.Name())
+	defer cleanup()
+
+	replicaPath := filepath.Join(tmpPath, "replica")
+	require.NoError(t, os.MkdirAll(replicaPath, 0755))
+
+	defer func(storages []config.Storage) {
+		config.Config.Storages = storages
+	}(config.Config.Storages)
+
+	config.Config.Storages = []config.Storage{
+		config.Storage{
+			Name: "default",
+			Path: testhelper.GitlabTestStoragePath(),
+		},
+		config.Storage{
+			Name: "replica",
+			Path: replicaPath,
+		},
+	}
+
+	server, serverSocketPath := runFullServer(t)
+	defer server.Stop()
+
+	testRepo, _, cleanupRepo := testhelper.NewTestRepo(t)
+	defer cleanupRepo()
+
+	config.Config.SocketPath = serverSocketPath
+
+	repoClient, conn := repository.NewRepositoryClient(t, serverSocketPath)
+	defer conn.Close()
+
+	targetRepo := *testRepo
+	targetRepo.StorageName = "replica"
+
+	targetRepoPath, err := helper.GetPath(&targetRepo)
+	require.NoError(t, err)
+
+	require.NoError(t, os.MkdirAll(targetRepoPath, 0755))
+	testhelper.MustRunCommand(t, nil, "touch", filepath.Join(targetRepoPath, "invalid_git_repo"))
+
+	ctx, cancel := testhelper.Context()
+	defer cancel()
+	md := testhelper.GitalyServersMetadata(t, serverSocketPath)
+	injectedCtx := metadata.NewOutgoingContext(ctx, md)
+
+	_, err = repoClient.ReplicateRepository(injectedCtx, &gitalypb.ReplicateRepositoryRequest{
+		Repository: &targetRepo,
+		Source:     testRepo,
+	})
+	require.NoError(t, err)
+
+	testhelper.MustRunCommand(t, nil, "git", "-C", targetRepoPath, "fsck")
+}
