@@ -14,20 +14,43 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/gitlab-org/gitaly/internal/config"
 	"gitlab.com/gitlab-org/gitaly/internal/dontpanic"
+	"gitlab.com/gitlab-org/gitaly/internal/log"
 	"gitlab.com/gitlab-org/gitaly/internal/tempdir"
 )
 
+type walkFunc func(path string, info os.FileInfo, err error, dirEmpty bool) error
+
 func cleanWalk(walkPath string) error {
-	walkErr := filepath.Walk(walkPath, func(path string, info os.FileInfo, err error) error {
+	walkErr := walkRoot(walkPath, func(path string, info os.FileInfo, err error, dirEmpty bool) error {
+		// To reduce pressure, sleep after each walk
+		defer func() { time.Sleep(100 * time.Microsecond) }()
+
 		if err != nil {
 			return err
 		}
 
+		countWalkCheck()
+
 		if info.IsDir() {
+			if !dirEmpty {
+				return nil
+			}
+
+			if err := os.Remove(path); err != nil {
+				// this is a potential race condition where
+				// another walker may have already removed this
+				// directory or added a file to it
+				log.Default().
+					WithField("path", path).
+					WithError(err).
+					Warnf("unable to remove empty dir")
+				return nil
+			}
+
+			countWalkRemoval()
+
 			return nil
 		}
-
-		countWalkCheck()
 
 		threshold := time.Now().Add(-1 * staleAge)
 		if info.ModTime().After(threshold) {
@@ -36,8 +59,8 @@ func cleanWalk(walkPath string) error {
 
 		if err := os.Remove(path); err != nil {
 			if os.IsNotExist(err) {
-				// race condition: another file walker on the same storage may
-				// have deleted the file already
+				// race condition: another file walker on the
+				// same storage may have deleted the file already
 				return nil
 			}
 
@@ -54,6 +77,82 @@ func cleanWalk(walkPath string) error {
 	}
 
 	return walkErr
+}
+
+// walkRoot is a modified version of https://golang.org/pkg/path/filepath/#Walk
+func walkRoot(root string, walkFn walkFunc) error {
+	info, err := os.Lstat(root)
+	if err != nil {
+		err = walkFn(root, nil, err, false)
+	} else {
+		err = walk(root, info, walkFn)
+	}
+	if err == filepath.SkipDir {
+		return nil
+	}
+	return err
+}
+
+// walk recursively descends path, calling walkFn.
+func walk(path string, info os.FileInfo, walkFn walkFunc) error {
+	if !info.IsDir() {
+		return walkFn(path, info, nil, false)
+	}
+
+	names, err0 := readDirNames(path)
+
+	for _, name := range names {
+		filename := filepath.Join(path, name)
+		fileInfo, err := os.Lstat(filename)
+		if err != nil {
+			if err := walkFn(filename, fileInfo, err, false); err != nil && err != filepath.SkipDir {
+				return err
+			}
+		} else {
+			err = walk(filename, fileInfo, walkFn)
+			if err != nil {
+				if !fileInfo.IsDir() || err != filepath.SkipDir {
+					return err
+				}
+			}
+		}
+	}
+
+	// re-read the directory contents after all children have been walked
+	dirEmpty := false
+	if names, err := readDirNames(path); err == nil && len(names) == 0 {
+		dirEmpty = true
+	}
+
+	err1 := walkFn(path, info, err0, dirEmpty)
+	// If err0 != nil, walk can't walk into this directory.
+	// err1 != nil means walkFn want walk to skip this directory or stop walking.
+	// Therefore, if one of err and err1 isn't nil, walk will return.
+	if err0 != nil || err1 != nil {
+		// The caller's behavior is controlled by the return value, which is decided
+		// by walkFn. walkFn may ignore err and return nil.
+		// If walkFn returns SkipDir, it will be handled by the caller.
+		// So walk should return whatever walkFn returns.
+		return err1
+	}
+
+	return nil
+}
+
+// readDirNames reads the directory named by dirname and returns
+// an unsorted list of directory entries.
+func readDirNames(dirname string) ([]string, error) {
+	f, err := os.Open(dirname)
+	if err != nil {
+		return nil, err
+	}
+	names, err := f.Readdirnames(-1)
+	f.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return names, nil
 }
 
 const cleanWalkFrequency = 10 * time.Minute

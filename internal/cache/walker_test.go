@@ -49,8 +49,8 @@ func TestDiskCacheObjectWalker(t *testing.T) {
 		}
 	}
 
-	expectChecks := cache.ExportMockCheckCounter.Count() + 4
-	expectRemovals := cache.ExportMockRemovalCounter.Count() + 2
+	expectChecks := cache.ExportMockCheckCounter.Count() + 9
+	expectRemovals := cache.ExportMockRemovalCounter.Count() + 4
 
 	// disable the initial move-and-clear function since we are only
 	// evaluating the walker
