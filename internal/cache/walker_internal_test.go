@@ -33,13 +33,10 @@ func TestCleanWalkEmptyDirs(t *testing.T) {
 		if strings.HasSuffix(tt.path, "/") {
 			require.NoError(t, os.MkdirAll(p, 0755))
 		} else {
-			f, err := os.Create(p)
-			require.NoError(t, err)
-			require.NoError(t, f.Close())
-		}
-
-		if tt.stale {
-			require.NoError(t, os.Chtimes(p, time.Now(), time.Now().Add(-1*time.Hour)))
+			require.NoError(t, ioutil.WriteFile(p, nil, 0655))
+			if tt.stale {
+				require.NoError(t, os.Chtimes(p, time.Now(), time.Now().Add(-time.Hour)))
+			}
 		}
 	}
 
