@@ -111,9 +111,13 @@ linters-settings:
     disable:
       - shadow
     disable-all: false
-  golint:
-    # minimal confidence for issues, default is 0.8
-    min-confidence: 0.8
+    golint:
+      - confidence: 0.8
+# revive is a replacement for the golint: https://github.com/mgechev/revive
+# Now it is not yet supported by the golangci-lint,
+# but it will be included soon: https://github.com/golangci/golangci-lint/issues/238
+#  revive:
+#    confidence: 0.8
   gofmt:
     # simplify code: gofmt with `-s` option, true by default
     simplify: true
@@ -238,14 +242,16 @@ linters-settings:
       - inherit
 
 
+# list of useful linters could be found at https://github.com/golangci/awesome-go-linters
 linters:
   enable:
-    - megacheck
+    - megacheck # https://github.com/dominikh/go-tools/tree/master/cmd/megacheck
     - govet
-    - errcheck
+    - errcheck # https://github.com/kisielk/errcheck
     - golint
-    - staticcheck
-    - goimports
+    - staticcheck # https://github.com/dominikh/go-tools/tree/master/cmd/staticcheck
+    - goimports # https://godoc.org/golang.org/x/tools/cmd/goimports
+    - gosimple # https://github.com/dominikh/go-tools/tree/master/cmd/gosimple
 #  disable:
 #    - maligned
 #    - prealloc
