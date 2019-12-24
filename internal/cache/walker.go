@@ -18,6 +18,14 @@ import (
 	"gitlab.com/gitlab-org/gitaly/internal/tempdir"
 )
 
+func logWalkErr(err error, path, msg string) {
+	countWalkError()
+	log.Default().
+		WithField("path", path).
+		WithError(err).
+		Warn(msg)
+}
+
 type walkFunc func(path string, info os.FileInfo, err error, dirEmpty bool) error
 
 func walker(path string, info os.FileInfo, err error, dirEmpty bool) error {
@@ -25,6 +33,7 @@ func walker(path string, info os.FileInfo, err error, dirEmpty bool) error {
 	defer time.Sleep(100 * time.Microsecond)
 
 	if err != nil {
+		logWalkErr(err, path, "unable to walk path")
 		return err
 	}
 
@@ -39,10 +48,7 @@ func walker(path string, info os.FileInfo, err error, dirEmpty bool) error {
 			// this is a potential race condition where
 			// another walker may have already removed this
 			// directory or added a file to it
-			log.Default().
-				WithField("path", path).
-				WithError(err).
-				Warn("unable to remove empty dir")
+			logWalkErr(err, path, "unable to remove empty dir")
 			return nil
 		}
 
@@ -60,6 +66,7 @@ func walker(path string, info os.FileInfo, err error, dirEmpty bool) error {
 		if os.IsNotExist(err) {
 			// race condition: another file walker on the
 			// same storage may have deleted the file already
+			logWalkErr(err, path, "unable to remove path")
 			return nil
 		}
 
