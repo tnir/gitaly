@@ -20,57 +20,59 @@ import (
 
 type walkFunc func(path string, info os.FileInfo, err error, dirEmpty bool) error
 
-func cleanWalk(walkPath string) error {
-	walkErr := walkRoot(walkPath, func(path string, info os.FileInfo, err error, dirEmpty bool) error {
-		// To reduce pressure, sleep after each walk
-		defer func() { time.Sleep(100 * time.Microsecond) }()
+func walker(path string, info os.FileInfo, err error, dirEmpty bool) error {
+	// To reduce pressure, sleep after each walk
+	defer time.Sleep(100 * time.Microsecond)
 
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
 
-		countWalkCheck()
+	countWalkCheck()
 
-		if info.IsDir() {
-			if !dirEmpty {
-				return nil
-			}
-
-			if err := os.Remove(path); err != nil {
-				// this is a potential race condition where
-				// another walker may have already removed this
-				// directory or added a file to it
-				log.Default().
-					WithField("path", path).
-					WithError(err).
-					Warnf("unable to remove empty dir")
-				return nil
-			}
-
-			countWalkRemoval()
-
-			return nil
-		}
-
-		threshold := time.Now().Add(-1 * staleAge)
-		if info.ModTime().After(threshold) {
+	if info.IsDir() {
+		if !dirEmpty {
 			return nil
 		}
 
 		if err := os.Remove(path); err != nil {
-			if os.IsNotExist(err) {
-				// race condition: another file walker on the
-				// same storage may have deleted the file already
-				return nil
-			}
-
-			return err
+			// this is a potential race condition where
+			// another walker may have already removed this
+			// directory or added a file to it
+			log.Default().
+				WithField("path", path).
+				WithError(err).
+				Warn("unable to remove empty dir")
+			return nil
 		}
 
 		countWalkRemoval()
 
 		return nil
-	})
+	}
+
+	threshold := time.Now().Add(-1 * staleAge)
+	if info.ModTime().After(threshold) {
+		return nil
+	}
+
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			// race condition: another file walker on the
+			// same storage may have deleted the file already
+			return nil
+		}
+
+		return err
+	}
+
+	countWalkRemoval()
+
+	return nil
+}
+
+func cleanWalk(walkPath string) error {
+	walkErr := walkRoot(walkPath, walker)
 
 	if os.IsNotExist(walkErr) {
 		return nil
