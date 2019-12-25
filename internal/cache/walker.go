@@ -136,7 +136,7 @@ func walk(path string, info os.FileInfo, walkFn walkFunc) error {
 	err1 := walkFn(path, info, err0, dirEmpty)
 	// If err0 != nil, walk can't walk into this directory.
 	// err1 != nil means walkFn want walk to skip this directory or stop walking.
-	// Therefore, if one of err and err1 isn't nil, walk will return.
+	// Therefore, if one of err0 and err1 isn't nil, walk will return.
 	if err0 != nil || err1 != nil {
 		// The caller's behavior is controlled by the return value, which is decided
 		// by walkFn. walkFn may ignore err and return nil.
