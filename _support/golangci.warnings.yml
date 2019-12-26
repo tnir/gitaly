@@ -1,0 +1,25 @@
+run:
+  timeout: 1m
+  issues-exit-code: 1
+  tests: true
+  build-tags:
+    - static
+  skip-dirs-use-default: true
+  modules-download-mode: readonly
+
+linters-settings:
+  staticcheck:
+    checks:
+      - inherit
+
+linters:
+  enable:
+    - staticcheck
+  disable-all: true
+
+issues:
+  exclude-rules:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false

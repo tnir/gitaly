@@ -74,7 +74,7 @@ func (gm *gitalyMake) Pkg() string         { return "gitlab.com/gitlab-org/gital
 func (gm *gitalyMake) GoImports() string   { return "bin/goimports" }
 func (gm *gitalyMake) BraceFmt() string    { return filepath.Join(gm.BuildDir(), "bin/bracefmt") }
 func (gm *gitalyMake) GoCovMerge() string  { return "bin/gocovmerge" }
-func (gm *gitalyMake) GoLint() string      { return "bin/golint" }
+func (gm *gitalyMake) GoLint() string      { return "bin/golangci-lint" }
 func (gm *gitalyMake) GoVendor() string    { return "bin/govendor" }
 func (gm *gitalyMake) StaticCheck() string { return filepath.Join(gm.BuildDir(), "bin/staticcheck") }
 func (gm *gitalyMake) ProtoC() string      { return filepath.Join(gm.BuildDir(), "protoc/bin/protoc") }

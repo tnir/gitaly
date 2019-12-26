@@ -143,7 +143,7 @@ rspec-gitlab-shell: {{ .GitlabShellDir }}/config.yml assemble-go prepare-tests
 	@cd  {{ .GitalyRubyDir }} && bundle exec bin/ruby-cd {{ .GitlabShellDir }} rspec
 
 .PHONY: verify
-verify: check-mod-tidy lint check-formatting staticcheck notice-up-to-date check-proto rubocop
+verify: check-mod-tidy check-formatting notice-up-to-date check-proto rubocop
 
 .PHONY: check-mod-tidy
 check-mod-tidy:
@@ -152,16 +152,18 @@ check-mod-tidy:
 
 .PHONY: lint
 lint: {{ .GoLint }}
-	# golint
-	@cd {{ .SourceDir }} && go run _support/lint.go
+	@cd {{ .SourceDir }}; \
+	git rm -r --quiet cmd/gitaly-remote; \
+	golangci-lint run --out-format tab --config .golangci.yml; \
+	EXIT_CODE=$$?;\
+	git checkout --quiet --no-progress HEAD cmd/gitaly-remote; \
+	exit $$EXIT_CODE
 
 {{ .GoLint }}:
-	go get golang.org/x/lint/golint@959b441ac422379a43da2230f62be024250818b0
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b {{ .BuildDir }}/bin v1.21.0
 
 .PHONY: check-formatting
-check-formatting: {{ .GoImports }} {{ .BraceFmt }}
-	# goimports
-	@cd {{ .SourceDir }} && goimports -e -l {{ join .GoFiles " " }} | {{ .MakeFormatCheck }}
+check-formatting: {{ .BraceFmt }}
 	# bracefmt
 	@cd {{ .SourceDir }} && {{ .BraceFmt }} {{ join .GoFiles " " }} | {{ .MakeFormatCheck }}
 
@@ -180,23 +182,19 @@ format: {{ .GoImports }} {{ .BraceFmt }}
 	# goimports pass 2
 	@cd {{ .SourceDir }} && goimports -w -l {{ join .GoFiles " " }}
 
-.PHONY: staticcheck
-staticcheck: {{ .StaticCheck }}
-	# staticcheck runs all default checks minus deprecations (SA1019)
-	@cd {{ .SourceDir }} && {{ .StaticCheck }} -checks inherit,-SA1019 -tags "$(BUILD_TAGS) static" {{ join .AllPackages " " }}
-
 .PHONY: staticcheck-deprecations
-staticcheck-deprecations: {{ .StaticCheck }}
+staticcheck-deprecations: {{ .GoLint }}
 	# Only returns deprecated code usage
-	@cd {{ .SourceDir }} && {{ .StaticCheck }} -checks SA1019 -tags "$(BUILD_TAGS) static" {{ join .AllPackages " " }}
+	@cd {{ .SourceDir }} && \
+	git rm -r --quiet cmd/gitaly-remote; \
+	golangci-lint run --out-format tab --config _support/golangci.warnings.yml; \
+	EXIT_CODE=$$?;\
+	git checkout --quiet --no-progress HEAD cmd/gitaly-remote; \
+	exit $$EXIT_CODE
 
-.PHONY: verify-warnings
-verify-warnings: staticcheck-deprecations
+.PHONY: lint-warnings
+lint-warnings: staticcheck-deprecations
 	# Runs verification analysis that is okay to fail (but not ignore completely)
-
-# Install staticcheck
-{{ .StaticCheck }}:
-	go get honnef.co/go/tools/cmd/staticcheck@95959eaf5e3c41c66151dcfd91779616b84077a8
 
 {{ .GoVendor }}:
 	go get github.com/kardianos/govendor@e07957427183a9892f35634ffc9ea48dedc6bbb4

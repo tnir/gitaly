@@ -245,12 +245,12 @@ linters-settings:
 # list of useful linters could be found at https://github.com/golangci/awesome-go-linters
 linters:
   enable:
-    - megacheck # https://github.com/dominikh/go-tools/tree/master/cmd/megacheck
-    - govet
-    - errcheck # https://github.com/kisielk/errcheck
+#    - errcheck # https://github.com/kisielk/errcheck
+#    - govet
     - golint
-    - staticcheck # https://github.com/dominikh/go-tools/tree/master/cmd/staticcheck
     - goimports # https://godoc.org/golang.org/x/tools/cmd/goimports
+#    - megacheck # https://github.com/dominikh/go-tools/tree/master/cmd/megacheck runs staticcheck, gosimple and unused at once
+    - staticcheck # https://github.com/dominikh/go-tools/tree/master/cmd/staticcheck
     - gosimple # https://github.com/dominikh/go-tools/tree/master/cmd/gosimple
 #  disable:
 #    - maligned
@@ -268,7 +268,6 @@ issues:
   # it can be disabled by `exclude-use-default: false`. To list all
   # excluded by default patterns execute `golangci-lint run --help`
   exclude:
-    - abcdef
 
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
