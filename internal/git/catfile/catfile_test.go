@@ -121,6 +121,25 @@ func TestCommit(t *testing.T) {
 	}
 }
 
+//func BenchmarkBatch_Commit(b *testing.B) {
+//	ctx, cancel := testhelper.Context()
+//	defer cancel()
+//
+//	c, err := New(ctx, testhelper.TestRepository())
+//	require.NoError(b, err)
+//
+//	commitBytes, err := ioutil.ReadFile("testdata/commit-e63f41fe459e62e1228fcef60d7189127aeba95a")
+//	require.NoError(b, err)
+//
+//	obj, err := c.Commit("60ecb67744cb56576c30214ff52294f8ce2def98^")
+//	require.NoError(b, err)
+//
+//	contents, err := ioutil.ReadAll(obj.Reader)
+//	require.NoError(b, err)
+//
+//	require.Equal(b, string(commitBytes), string(contents))
+//}
+
 func TestTag(t *testing.T) {
 	ctx, cancel := testhelper.Context()
 	defer cancel()

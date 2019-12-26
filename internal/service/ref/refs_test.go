@@ -1678,6 +1678,27 @@ func TestFindTagNestedTag(t *testing.T) {
 	}
 }
 
+// BENCHMARKING FOR IMPROVED VERSION OF GET SOME OBJECT
+func BenchmarkGetCommitCatFile(b *testing.B) {
+	testRepoCopy, _, cleanupFn := testhelper.NewTestRepoWithWorktree(b)
+	defer cleanupFn()
+
+	ctx, cancel := testhelper.Context()
+	defer cancel()
+
+	batch, err := catfile.New(ctx, testRepoCopy)
+	require.NoError(b, err)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		commit, err := log.GetCommitCatfile(batch, "6f6d7e7ed97bb5f0054f2b1df789b39ca89b6ff9")
+		require.NoError(b, err)
+		_ = commit
+	}
+}
+
+// 32985	     31245 ns/op
+
 func TestInvalidFindTagRequest(t *testing.T) {
 	server, serverSocketPath := runRefServiceServer(t)
 	defer server.Stop()

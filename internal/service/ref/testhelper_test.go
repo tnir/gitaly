@@ -101,7 +101,7 @@ func testMain(m *testing.M) int {
 	return m.Run()
 }
 
-func runRefServiceServer(t *testing.T) (*grpc.Server, string) {
+func runRefServiceServer(t testing.TB) (*grpc.Server, string) {
 	serverSocketPath := testhelper.GetTemporaryGitalySocketFileName()
 	grpcServer := testhelper.NewTestGrpcServer(t, nil, nil)
 

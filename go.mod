@@ -25,6 +25,7 @@ require (
 	google.golang.org/genproto v0.0.0-20181202183823-bd91e49a0898 // indirect
 	google.golang.org/grpc v1.24.0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+	gopkg.in/libgit2/git2go.v25 v25.0.0-20170120134632-334260d743d7
 	gopkg.in/yaml.v2 v2.2.2
 )
 

@@ -15,7 +15,7 @@ type CreateTagOpts struct {
 }
 
 // CreateTag creates a new tag.
-func CreateTag(t *testing.T, repoPath, tagName, targetID string, opts *CreateTagOpts) string {
+func CreateTag(t testing.TB, repoPath, tagName, targetID string, opts *CreateTagOpts) string {
 	var message string
 	force := false
 
