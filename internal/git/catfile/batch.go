@@ -116,6 +116,50 @@ func (b *batchProcess) object(revspec string, expectedType string) (Object, erro
 	}, nil
 }
 
+func (b *batchProcess) reader(revspec string, expectedType string) (io.Reader, error) {
+	b.Lock()
+	defer b.Unlock()
+
+	if b.n == 1 {
+		// Consume linefeed
+		if _, err := b.r.ReadByte(); err != nil {
+			return nil, err
+		}
+		b.n--
+	}
+
+	if b.n != 0 {
+		return nil, fmt.Errorf("cannot create new reader: batch contains %d unread bytes", b.n)
+	}
+
+	if _, err := fmt.Fprintln(b.w, revspec); err != nil {
+		return nil, err
+	}
+
+	oi, err := ParseObjectInfo(b.r)
+	if err != nil {
+		return nil, err
+	}
+
+	b.n = oi.Size + 1
+
+	if oi.Type != expectedType {
+		// This is a programmer error and it should never happen. But if it does,
+		// we need to leave the cat-file process in a good state
+		if _, err := io.CopyN(ioutil.Discard, b.r, b.n); err != nil {
+			return nil, err
+		}
+		b.n = 0
+
+		return nil, fmt.Errorf("expected %s to be a %s, got %s", oi.Oid, expectedType, oi.Type)
+	}
+
+	return &batchReader{
+		batchProcess: b,
+		r:            io.LimitReader(b.r, oi.Size),
+	}, nil
+}
+
 func (b *batchProcess) consume(nBytes int) {
 	b.n -= int64(nBytes)
 	if b.n < 1 {

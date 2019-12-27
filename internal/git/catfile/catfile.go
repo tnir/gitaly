@@ -2,6 +2,7 @@ package catfile
 
 import (
 	"context"
+	"io"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -75,6 +76,11 @@ func (c *Batch) Info(revspec string) (ObjectInfo, error) {
 	return c.batchCheck.info(revspec)
 }
 
+func (c *Batch) Info1(revspec string) (*ObjectInfo, error) {
+	catfileLookupCounter.WithLabelValues("info").Inc()
+	return c.batchCheck.info1(revspec)
+}
+
 // Tree returns a raw tree object. It is an error if revspec does not
 // point to a tree. To prevent this firstuse Info to resolve the revspec
 // and check the object type. Caller must consume the Reader before
@@ -91,6 +97,11 @@ func (c *Batch) Tree(revspec string) (Object, error) {
 func (c *Batch) Commit(revspec string) (Object, error) {
 	catfileLookupCounter.WithLabelValues("commit").Inc()
 	return c.batchProcess.object(revspec, "commit")
+}
+
+func (c *Batch) Commit1(revspec string) (io.Reader, error) {
+	catfileLookupCounter.WithLabelValues("commit").Inc()
+	return c.batchProcess.reader(revspec, "commit")
 }
 
 // Blob returns a object for the requested blob. The entire blob must be

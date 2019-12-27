@@ -56,3 +56,32 @@ func ParseObjectInfo(stdout *bufio.Reader) (ObjectInfo, error) {
 		Size: objectSize,
 	}, nil
 }
+
+// ParseObjectInfo reads from a reader and parses the data into an ObjectInfo struct
+func ParseObjectInfo1(stdout *bufio.Reader) (*ObjectInfo, error) {
+	infoLine, err := stdout.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("read info line: %v", err)
+	}
+
+	infoLine = strings.TrimSuffix(infoLine, "\n")
+	if strings.HasSuffix(infoLine, " missing") {
+		return nil, NotFoundError{fmt.Errorf("object not found")}
+	}
+
+	info := strings.Split(infoLine, " ")
+	if len(info) != 3 {
+		return nil, fmt.Errorf("invalid info line: %q", infoLine)
+	}
+
+	objectSize, err := strconv.ParseInt(info[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse object size: %v", err)
+	}
+
+	return &ObjectInfo{
+		Oid:  info[0],
+		Type: info[1],
+		Size: objectSize,
+	}, nil
+}

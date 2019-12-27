@@ -62,3 +62,14 @@ func (bc *batchCheck) info(spec string) (ObjectInfo, error) {
 
 	return ParseObjectInfo(bc.r)
 }
+
+func (bc *batchCheck) info1(spec string) (*ObjectInfo, error) {
+	bc.Lock()
+	defer bc.Unlock()
+
+	if _, err := fmt.Fprintln(bc.w, spec); err != nil {
+		return nil, err
+	}
+
+	return ParseObjectInfo1(bc.r)
+}

@@ -94,6 +94,42 @@ func extractEntryInfoFromTreeData(treeData *bytes.Buffer, commitOid, rootOid, ro
 	return entries, nil
 }
 
+func extractEntryInfoFromTreeData1(treeData *bytes.Buffer, commitOid, rootOid, rootPath string, treeInfo *catfile.ObjectInfo) ([]*gitalypb.TreeEntry, error) {
+	if len(treeInfo.Oid) == 0 {
+		return nil, fmt.Errorf("empty tree oid")
+	}
+
+	var entries []*gitalypb.TreeEntry
+	oidBuf := &bytes.Buffer{}
+	for treeData.Len() > 0 {
+		modeBytes, err := treeData.ReadBytes(' ')
+		if err != nil || len(modeBytes) <= 1 {
+			return nil, fmt.Errorf("read entry mode: %v", err)
+		}
+		modeBytes = modeBytes[:len(modeBytes)-1]
+
+		filename, err := treeData.ReadBytes('\x00')
+		if err != nil || len(filename) <= 1 {
+			return nil, fmt.Errorf("read entry path: %v", err)
+		}
+		filename = filename[:len(filename)-1]
+
+		oidBuf.Reset()
+		if _, err := io.CopyN(oidBuf, treeData, oidSize); err != nil {
+			return nil, fmt.Errorf("read entry oid: %v", err)
+		}
+
+		treeEntry, err := newTreeEntry(commitOid, rootOid, rootPath, filename, oidBuf.Bytes(), modeBytes)
+		if err != nil {
+			return nil, fmt.Errorf("new entry info: %v", err)
+		}
+
+		entries = append(entries, treeEntry)
+	}
+
+	return entries, nil
+}
+
 func treeEntries(c *catfile.Batch, revision, path string, rootOid string, recursive bool) ([]*gitalypb.TreeEntry, error) {
 	if path == "." {
 		path = ""

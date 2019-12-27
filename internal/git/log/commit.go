@@ -37,6 +37,21 @@ func GetCommitCatfile(c *catfile.Batch, revision string) (*gitalypb.GitCommit, e
 	return parseRawCommit(obj.Reader, obj.ObjectInfo)
 }
 
+// GetCommitCatfile1 looks up a commit by revision using an existing *catfile.Batch instance.
+func GetCommitCatfile1(c *catfile.Batch, revision string) (*gitalypb.GitCommit, error) {
+	info, err := c.Info1(revision + "^{commit}")
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := c.Commit1(info.Oid)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseRawCommit1(r, info)
+}
+
 // GetCommitMessage looks up a commit message and returns it in its entirety.
 func GetCommitMessage(c *catfile.Batch, repo *gitalypb.Repository, revision string) ([]byte, error) {
 	info, err := c.Info(revision + "^{commit}")
@@ -64,6 +79,14 @@ func parseRawCommit(r io.Reader, info catfile.ObjectInfo) (*gitalypb.GitCommit, 
 	return buildCommit(header, body, info.Oid)
 }
 
+func parseRawCommit1(r io.Reader, info *catfile.ObjectInfo) (*gitalypb.GitCommit, error) {
+	header, body, err := splitRawCommit(r)
+	if err != nil {
+		return nil, err
+	}
+	return buildCommit1(header, body, info)
+}
+
 func splitRawCommit(r io.Reader) ([]byte, []byte, error) {
 	raw, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -84,6 +107,48 @@ func splitRawCommit(r io.Reader) ([]byte, []byte, error) {
 func buildCommit(header, body []byte, oid string) (*gitalypb.GitCommit, error) {
 	commit := &gitalypb.GitCommit{
 		Id:       oid,
+		BodySize: int64(len(body)),
+		Body:     body,
+		Subject:  subjectFromBody(body),
+	}
+
+	if max := helper.MaxCommitOrTagMessageSize; len(body) > max {
+		commit.Body = commit.Body[:max]
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(header))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) == 0 || line[0] == ' ' {
+			continue
+		}
+
+		headerSplit := strings.SplitN(line, " ", 2)
+		if len(headerSplit) != 2 {
+			continue
+		}
+
+		switch headerSplit[0] {
+		case "parent":
+			commit.ParentIds = append(commit.ParentIds, headerSplit[1])
+		case "author":
+			commit.Author = parseCommitAuthor(headerSplit[1])
+		case "committer":
+			commit.Committer = parseCommitAuthor(headerSplit[1])
+		case "gpgsig":
+			commit.SignatureType = detectSignatureType(headerSplit[1])
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return commit, nil
+}
+
+func buildCommit1(header, body []byte, info *catfile.ObjectInfo) (*gitalypb.GitCommit, error) {
+	commit := &gitalypb.GitCommit{
+		Id:       info.Oid,
 		BodySize: int64(len(body)),
 		Body:     body,
 		Subject:  subjectFromBody(body),
