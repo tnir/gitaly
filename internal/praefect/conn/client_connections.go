@@ -34,7 +34,7 @@ func NewClientConnections() *ClientConnections {
 func (c *ClientConnections) RegisterNode(storageName, listenAddr, token string) error {
 	conn, err := client.Dial(listenAddr,
 		[]grpc.DialOption{
-			grpc.WithDefaultCallOptions(grpc.CallCustomCodec(proxy.Codec())),
+			grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.Codec())),
 			grpc.WithPerRPCCredentials(gitalyauth.RPCCredentials(token)),
 		},
 	)
