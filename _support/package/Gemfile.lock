@@ -1,7 +1,9 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    archive-tar-minitar (0.5.2)
+    archive-tar-minitar (0.8)
+      minitar (~> 0.8)
+      minitar-cli (~> 0.8)
     arr-pm (0.0.10)
       cabin (> 0)
     backports (3.6.8)
@@ -22,9 +24,14 @@ GEM
       json (>= 1.7.7, < 2.0)
       pleaserun (~> 0.0.24)
       ruby-xz
+    hashie (4.0.0)
     insist (1.0.0)
     io-like (0.3.0)
     json (1.8.3)
+    minitar (0.8)
+    minitar-cli (0.8)
+      minitar (~> 0.8.0)
+      powerbar (~> 1.0)
     mustache (0.99.8)
     pleaserun (0.0.27)
       cabin (> 0)
@@ -33,6 +40,8 @@ GEM
       insist
       mustache (= 0.99.8)
       stud
+    powerbar (1.0.18)
+      hashie (>= 1.1.0)
     ruby-xz (0.2.3)
       ffi (~> 1.9)
       io-like (~> 0.3)
