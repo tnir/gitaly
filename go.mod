@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/rubenv/sql-migrate v0.0.0-20191213152630-06338513c237
-	github.com/sirupsen/logrus v1.4.2
+	github.com/sirupsen/logrus v1.5.0
 	github.com/stretchr/testify v1.4.0
 	github.com/tinylib/msgp v1.1.0 // indirect
 	gitlab.com/gitlab-org/labkit v0.0.0-20190902063225-3253d7975ca7
