@@ -5,7 +5,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cloudflare/tableflip v0.0.0-20190329062924-8392f1641731
 	github.com/getsentry/sentry-go v0.3.0
-	github.com/golang/protobuf v1.3.2
+	github.com/golang/protobuf v1.4.0
 	github.com/google/uuid v1.1.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
