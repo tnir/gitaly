@@ -23,7 +23,7 @@ require (
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/sys v0.0.0-20190813064441-fde4db37ae7a
 	google.golang.org/genproto v0.0.0-20181202183823-bd91e49a0898 // indirect
-	google.golang.org/grpc v1.24.0
+	google.golang.org/grpc v1.29.1
 	gopkg.in/yaml.v2 v2.2.8
 )
 
