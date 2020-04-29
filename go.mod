@@ -12,7 +12,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.3.0
 	github.com/lib/pq v1.2.0
 	github.com/libgit2/git2go v0.0.0-20190104134018-ecaeb7a21d47
-	github.com/prometheus/client_golang v1.0.0
+	github.com/prometheus/client_golang v1.6.0
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/rubenv/sql-migrate v0.0.0-20191213152630-06338513c237
 	github.com/sirupsen/logrus v1.4.2
