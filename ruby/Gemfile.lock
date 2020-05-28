@@ -204,7 +204,7 @@ GEM
       equalizer (~> 0.0.9)
       parser (~> 2.6.3)
       procto (~> 0.0.2)
-    vcr (4.0.0)
+    vcr (6.0.0)
     webmock (3.4.2)
       addressable (>= 2.3.6)
       crack (>= 0.3.2)
@@ -238,7 +238,7 @@ DEPENDENCIES
   sentry-raven (~> 2.9.0)
   simplecov (~> 0.17.1)
   timecop
-  vcr (~> 4.0.0)
+  vcr (~> 6.0.0)
   webmock (~> 3.4.0)
 
 BUNDLED WITH
