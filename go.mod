@@ -37,7 +37,7 @@ require (
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/rubenv/sql-migrate v0.0.0-20191213152630-06338513c237
 	github.com/sirupsen/logrus v1.7.0
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/uber/jaeger-client-go v2.15.0+incompatible
 	gitlab.com/gitlab-org/gitlab-shell v1.9.8-0.20201117050822-3f9890ef73dc
 	gitlab.com/gitlab-org/labkit v1.0.0
