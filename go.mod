@@ -15,7 +15,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cloudflare/tableflip v1.2.2
 	github.com/containerd/cgroups v0.0.0-20201118023556-2819c83ced99
-	github.com/getsentry/sentry-go v0.7.0
+	github.com/getsentry/sentry-go v0.11.0
 	github.com/git-lfs/git-lfs v1.5.1-0.20210304194248-2e1d981afbe3
 	github.com/golang/protobuf v1.3.3
 	github.com/google/uuid v1.1.1
