@@ -8,7 +8,7 @@ gem 'rdoc', '~> 6.0'
 gem 'gitlab-gollum-lib', '~> 4.2.7.10.gitlab.1', require: false
 gem 'gitlab-gollum-rugged_adapter', '~> 0.4.4.4.gitlab.1', require: false
 gem 'grpc', '~> 1.30.2'
-gem 'sentry-raven', '~> 3.0', require: false
+gem 'sentry-raven', '~> 3.1', require: false
 gem 'faraday', '~> 1.0'
 gem 'rbtrace', require: false
 
