@@ -17,7 +17,7 @@ require (
 	github.com/containerd/cgroups v0.0.0-20201118023556-2819c83ced99
 	github.com/getsentry/sentry-go v0.7.0
 	github.com/git-lfs/git-lfs v1.5.1-0.20210304194248-2e1d981afbe3
-	github.com/golang/protobuf v1.3.3
+	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.1.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.3-0.20210213123510-be4c235f9d1c
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
@@ -33,8 +33,7 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/otiai10/curr v1.0.0 // indirect
 	github.com/pelletier/go-toml v1.8.1
-	github.com/prometheus/client_golang v1.0.0
-	github.com/prometheus/procfs v0.0.3 // indirect
+	github.com/prometheus/client_golang v1.11.0
 	github.com/rubenv/sql-migrate v0.0.0-20191213152630-06338513c237
 	github.com/sirupsen/logrus v1.7.0
 	github.com/stretchr/testify v1.6.1
@@ -44,8 +43,8 @@ require (
 	go.uber.org/goleak v1.1.10
 	golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b // indirect
 	golang.org/x/exp v0.0.0-20200331195152-e8c3332aa8e5 // indirect
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
-	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4
+	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+	golang.org/x/sys v0.0.0-20210603081109-ebe580a85c40
 	golang.org/x/text v0.3.3
 	google.golang.org/grpc v1.29.1
 	gopkg.in/yaml.v2 v2.4.0 // indirect
